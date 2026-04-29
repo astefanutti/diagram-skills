@@ -57,14 +57,39 @@ Things outside the skill that it calls or depends on:
 
 These get `style.stroke-dash: 3` (dashed border).
 
-### 6. Containers
+### 6. Containers for Composite Subsystems
 
-Group related sub-steps when:
-- A step has 3+ internal sub-operations that are worth showing individually
+Group related sub-steps into containers when:
+- A step has 3+ internal variants or sub-modes the reader would benefit from seeing individually
 - The sub-steps share a title/phase name (e.g., "Scoring" contains inline/LLM/external)
-- The grouping clarifies the architecture
+- The grouping clarifies the architecture — showing that these are components of one subsystem, not independent steps
 
-Use D2 nested blocks. Container children are simpler nodes (shorter labels, fewer bullets).
+**Common container patterns in skills:**
+- **Scoring/judging systems**: multiple judge types (inline, LLM, pairwise, external) as children of a "Score" container
+- **Tool/hook systems**: multiple interceptors (AskUserQuestion, Bash, MCP tools) as children of a "Tool Interception" container
+- **Multi-format output**: multiple output artifacts grouped under a "Report" container
+
+Use D2 nested blocks. Container children are simpler nodes (shorter labels, fewer bullets). The container itself has just a title.
+
+**Anti-pattern**: collapsing a composite subsystem into a single flat node with many bullets. If you find yourself writing 6+ bullets for one node, it probably should be a container with children.
+
+### 6a. Mode Branching
+
+When a step has distinct execution modes, show them as alternative sub-nodes rather than collapsing into one box. Look for:
+- If/else on mode flags (e.g., `case` mode vs `batch` mode)
+- Distinct code paths triggered by arguments (e.g., `--strategy bootstrap` vs `--strategy expand`)
+- Different argument handling or data flow per mode
+
+Model these as fan-out alternatives at the same column, stacked vertically, with edge labels naming the mode. The viewer should see at a glance that there are N distinct paths.
+
+### 6b. Callout Detail Boxes
+
+Generate callout boxes for concrete examples that ground abstract steps in tangible detail. Look for:
+- **File trees** created by scripts (e.g., workspace directory structure)
+- **Config snippets** documented in SKILL.md or references (e.g., eval.yaml structure)
+- **YAML/JSON structures** that are central to the skill's data model
+
+Callout boxes connect to their anchor node with a dashed line and sit in whitespace near it. They use monospace font, left-aligned text, and a light border. They make the diagram more useful as a reference doc — without them, the diagram stays abstract.
 
 ### 7. Output Artifacts
 
@@ -73,7 +98,29 @@ The final step(s) that produce results:
 - Reports displayed or opened
 - Data pushed to external systems
 
-### 8. Back-Edges
+### 8. Data-Flow Edge Labels
+
+Beyond condition labels ("missing", "< 5 cases"), label edges with what data flows through them. This makes the diagram informative — the reader can trace what artifacts move between steps.
+
+Look for:
+- Files passed between steps: "summary.yaml", "tool_handlers.yaml", "batch.yaml"
+- Data structures: "answers.yaml + input.yaml = LLM context"
+- Decisions: "allow / deny per tool call"
+- Return values: "run_result.json", "collection.json"
+
+**Rule**: if a step produces a named artifact that the next step consumes, label the edge with that artifact name. If the relationship is just "A then B" with no specific data handoff, leave the edge unlabeled.
+
+### 9. Upstream and Downstream Skills
+
+Always check if the skill invokes other skills via the Skill tool (look for `Skill tool`, `invoke /skill-name`, or `Use the Skill tool`). Show these as:
+- **Dashed-border external nodes** connected to the step that invokes them
+- Edge labels describing the trigger condition ("missing config", "no cases", "optional")
+
+Also check the skill's suggested "next steps" — these are downstream skills that complete the pipeline. Show them at the end with dashed optional edges.
+
+This provides pipeline context — the reader sees not just what the skill does, but where it fits in the larger workflow.
+
+### 10. Back-Edges
 
 Loops and retry patterns:
 - Validation → retry on failure

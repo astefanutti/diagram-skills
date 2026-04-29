@@ -111,6 +111,36 @@ After initial placement, check:
 - If diagram fills less than 60% of canvas → shrink canvas
 - Back-edge routes at bottom may require extra canvas height (add route_y + 30)
 
+## Rule 6a: Pipeline Wrapping for Wide Diagrams
+
+**Maximum comfortable canvas width: ~1800px.** When a left-to-right pipeline has more than 7-8 semantic columns, a single horizontal strip becomes too wide for comfortable viewing (requires horizontal scrolling, doesn't fit on screens or slides).
+
+**When to wrap**: if the initial column layout exceeds 1800px width, restructure the diagram into 2-3 rows:
+
+**Preferred approach — semantic phase rows**: group related steps into horizontal phases, stacked vertically:
+- **Row 1 (top)**: Setup phase — entry, config, dataset, preflight, workspace
+- **Row 2 (middle)**: Execution phase — execute, hooks, collect
+- **Row 3 (bottom)**: Scoring + Reporting phase — score, analyze, report, mlflow
+
+Each row flows left-to-right. Rows connect with a vertical edge from the last node of one row to the first node of the next.
+
+**Alternative — zigzag**: Row 1 flows left-to-right, Row 2 flows right-to-left, connected at the ends. Works for simple pipelines but confusing for complex ones with side branches.
+
+**Column compression**: before wrapping, try compressing column spacing (reduce from 50px to 30px gaps) or merging tightly-coupled sequential steps. Only wrap if compression still exceeds ~1800px.
+
+## Rule 6b: Variable Node Sizing by Complexity
+
+Nodes should be sized to match their content and structural importance, not uniform across the diagram.
+
+**Guidelines**:
+- **Containers**: wider than regular nodes — they enclose children and need room. Height includes title + children + padding
+- **Key subsystems** (execution, scoring): larger to draw attention — they're the core of the workflow
+- **Simple pass-through nodes** (preflight, find-dataset): compact — they're validation gates, not major processing
+- **External service nodes**: small — they're just references, not detailed steps
+- **Entry nodes**: medium — tall enough for CLI args but not dominant
+
+**Anti-pattern**: making all nodes the same size. This produces a monotonous visual rhythm and fails to communicate which steps are the important ones.
+
 ## Rule 7: Edge Labels and Conditional Styling
 
 For conditional edges (decision branches, error paths, shortcuts):

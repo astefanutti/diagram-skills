@@ -128,6 +128,37 @@ scoring: Score {
 }
 ```
 
+### Callout Detail Box
+
+Concrete example grounding an abstract step (file tree, config snippet, YAML structure). Light border, monospace, connected by dashed line.
+
+```d2
+workspace-tree: |md
+  /tmp/agent-eval/{id}/
+  case-001/
+    input.yaml
+    answers.yaml
+  settings.json
+  CLAUDE.md
+  hooks.py
+  tool_handlers.yaml
+  batch.yaml
+| {
+  shape: rectangle
+  style.fill: "#f5f5f5"
+  style.stroke: "#bbbbbb"
+  style.stroke-width: 1
+  style.font: mono
+  style.font-size: 10
+}
+
+workspace -> workspace-tree: {
+  style.stroke: "#bbbbbb"
+  style.stroke-dash: 4
+  style.stroke-width: 1
+}
+```
+
 ## Edge Types
 
 ### Forward Edge (default)
@@ -136,9 +167,19 @@ scoring: Score {
 load-config -> find-dataset
 ```
 
+### Data-Flow Edge
+
+Label with the artifact or data that flows between steps.
+
+```d2
+scoring -> analyze: "summary.yaml"
+collect -> scoring: "collection.json"
+hooks -> execute: "allow / deny\nper tool call"
+```
+
 ### Conditional / Branch Edge
 
-Add a label describing the condition.
+Label with the condition that selects this branch.
 
 ```d2
 assess -> bootstrap: "< 5 cases"
