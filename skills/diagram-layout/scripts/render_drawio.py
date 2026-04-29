@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+"""Convert a layout plan JSON into drawio XML."""
+
+import json
+import sys
+from html import escape
+
+
+def render(plan):
+    """Generate drawio XML from a layout plan."""
+    cells = []
+    cell_id = 2
+
+    for elem in plan.get("elements", []):
+        etype = elem.get("type", "node")
+
+        if etype == "container":
+            # Container cell
+            cid = elem.get("id", str(cell_id))
+            cells.append(_vertex(
+                cid, elem.get("label_html", ""),
+                elem["x"], elem["y"], elem["width"], elem["height"],
+                elem.get("style", _default_container_style()),
+                parent="1",
+            ))
+            cell_id = max(cell_id, int(cid) + 1) if cid.isdigit() else cell_id + 1
+
+            # Container children
+            for child in elem.get("children", []):
+                child_id = child.get("id", str(cell_id))
+                cells.append(_vertex(
+                    child_id, child.get("label_html", ""),
+                    child["rel_x"], child["rel_y"],
+                    child["width"], child["height"],
+                    child.get("style", _default_node_style()),
+                    parent=cid,
+                ))
+                cell_id = max(cell_id, int(child_id) + 1) if child_id.isdigit() else cell_id + 1
+
+        elif etype == "node":
+            nid = elem.get("id", str(cell_id))
+            cells.append(_vertex(
+                nid, elem.get("label_html", ""),
+                elem["x"], elem["y"], elem["width"], elem["height"],
+                elem.get("style", _default_node_style()),
+                parent="1",
+            ))
+            cell_id = max(cell_id, int(nid) + 1) if nid.isdigit() else cell_id + 1
+
+        elif etype == "edge":
+            eid = elem.get("id", str(cell_id))
+            cells.append(_edge(
+                eid,
+                elem["from"], elem["to"],
+                elem.get("label", ""),
+                elem.get("style", _default_edge_style()),
+                elem.get("waypoints"),
+                elem.get("exit_point"),
+                elem.get("entry_point"),
+            ))
+            cell_id = max(cell_id, int(eid) + 1) if eid.isdigit() else cell_id + 1
+
+    xml = (
+        '<mxGraphModel adaptiveColors="auto">\n'
+        '  <root>\n'
+        '    <mxCell id="0"/>\n'
+        '    <mxCell id="1" parent="0"/>\n'
+    )
+    for cell in cells:
+        xml += cell
+    xml += "  </root>\n</mxGraphModel>\n"
+    return xml
+
+
+def _vertex(cid, label, x, y, w, h, style, parent="1"):
+    label_escaped = escape(label)
+    geom = (
+        f'      <mxGeometry x="{x}" y="{y}" '
+        f'width="{w}" height="{h}" as="geometry"/>\n'
+    )
+    return (
+        f'    <mxCell id="{cid}" value="{label_escaped}" '
+        f'style="{style}" vertex="1" parent="{parent}">\n'
+        f'{geom}'
+        f'    </mxCell>\n'
+    )
+
+
+def _edge(eid, source, target, label, style, waypoints=None,
+          exit_point=None, entry_point=None):
+    label_escaped = escape(label) if label else ""
+
+    # Add exit/entry points to style
+    full_style = style
+    if exit_point:
+        full_style += (
+            f"exitX={exit_point['x']};exitY={exit_point['y']};"
+            f"exitDx=0;exitDy=0;"
+        )
+    if entry_point:
+        full_style += (
+            f"entryX={entry_point['x']};entryY={entry_point['y']};"
+            f"entryDx=0;entryDy=0;"
+        )
+
+    value_attr = f' value="{label_escaped}"' if label_escaped else ""
+
+    geom = '      <mxGeometry relative="1" as="geometry">\n'
+    if waypoints:
+        geom += '        <Array as="points">\n'
+        for wp in waypoints:
+            geom += f'          <mxPoint x="{wp["x"]}" y="{wp["y"]}"/>\n'
+        geom += "        </Array>\n"
+    geom += "      </mxGeometry>\n"
+
+    return (
+        f'    <mxCell id="{eid}"{value_attr} '
+        f'style="{full_style}" edge="1" '
+        f'source="{source}" target="{target}" parent="1">\n'
+        f'{geom}'
+        f'    </mxCell>\n'
+    )
+
+
+def _default_node_style():
+    return (
+        "rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;"
+        "strokeColor=#333333;strokeWidth=2;arcSize=10;"
+        "verticalAlign=top;spacingTop=5;fontSize=11;"
+    )
+
+
+def _default_container_style():
+    return (
+        "rounded=1;whiteSpace=wrap;html=1;fillColor=#ececec;"
+        "strokeColor=#333333;strokeWidth=2;container=1;collapsible=0;"
+        "verticalAlign=top;spacingTop=5;fontSize=12;fontStyle=1;"
+    )
+
+
+def _default_edge_style():
+    return (
+        "edgeStyle=orthogonalEdgeStyle;rounded=1;"
+        "strokeColor=#333333;strokeWidth=1.5;html=1;"
+    )
+
+
+def main():
+    if len(sys.argv) < 3:
+        print("Usage: render_drawio.py <layout-plan.json> <output.drawio>",
+              file=sys.stderr)
+        sys.exit(1)
+
+    with open(sys.argv[1]) as f:
+        plan = json.load(f)
+
+    xml = render(plan)
+
+    with open(sys.argv[2], "w") as f:
+        f.write(xml)
+
+    print(f"Wrote {sys.argv[2]}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
