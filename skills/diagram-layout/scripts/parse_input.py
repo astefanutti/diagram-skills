@@ -20,6 +20,8 @@ def parse_d2(path):
     current_block = None
     current_block_id = None
     block_depth = 0
+    in_edge_block = False
+    last_edge_idx = -1
 
     for line in lines:
         stripped = line.strip()
@@ -27,9 +29,18 @@ def parse_d2(path):
         if not stripped or stripped.startswith("#") or stripped.startswith("*."):
             continue
 
+        # Inside an edge style block — look for stroke-dash
+        if in_edge_block:
+            if "stroke-dash" in stripped or "stroke_dash" in stripped:
+                if last_edge_idx >= 0:
+                    edges[last_edge_idx]["style"] = "dashed"
+            if "}" in stripped:
+                in_edge_block = False
+            continue
+
         # Edge: a -> b or a -> b: { ... }
         edge_match = re.match(
-            r"(\w+)\s*->\s*(\w+)(?:\s*:\s*(.+))?", stripped
+            r"([\w-]+)\s*->\s*([\w-]+)(?:\s*:\s*(.+))?", stripped
         )
         if edge_match:
             src, tgt, label = edge_match.groups()
@@ -37,18 +48,23 @@ def parse_d2(path):
             if label and "{" in label:
                 if "stroke-dash" in label:
                     style = "dashed"
-                label = None
+                label = re.sub(r"\s*\{.*", "", label).strip()
+            if label:
+                label = label.strip('" ')
             edges.append({
                 "from": src,
                 "to": tgt,
-                "label": (label or "").strip('" '),
+                "label": label or "",
                 "style": style,
             })
+            last_edge_idx = len(edges) - 1
+            if "{" in stripped and "}" not in stripped:
+                in_edge_block = True
             continue
 
         # Block start: name: label { or name: { or name { or name: |md
         block_match = re.match(
-            r"(\w+)\s*:\s*(.+?)?\s*\{?\s*$", stripped
+            r"([\w-]+)\s*:\s*(.+?)?\s*\{?\s*$", stripped
         )
         if block_match and "{" in stripped:
             block_id = block_match.group(1)
@@ -83,7 +99,7 @@ def parse_d2(path):
             continue
 
         # Block with markdown content: name: |md
-        md_match = re.match(r"(\w+)\s*:\s*\|md\s*$", stripped)
+        md_match = re.match(r"([\w-]+)\s*:\s*\|md\s*$", stripped)
         if md_match:
             block_id = md_match.group(1)
             if current_block_id:
@@ -100,7 +116,7 @@ def parse_d2(path):
             continue
 
         # Simple assignment: name: "value"
-        simple_match = re.match(r"(\w+)\s*:\s*\"(.+?)\"", stripped)
+        simple_match = re.match(r"([\w-]+)\s*:\s*\"(.+?)\"", stripped)
         if simple_match and "{" not in stripped:
             node_id = simple_match.group(1)
             label = simple_match.group(2)

@@ -155,12 +155,24 @@ def validate(plan):
                     f"{eid_b} segment ({bx1},{by1})->({bx2},{by2})"
                 )
 
+    # Build container parent→children map for skip logic
+    container_children = {}
+    for elem in elements:
+        if elem.get("type") == "container":
+            for child in elem.get("children", []):
+                child_id = child.get("id", child) if isinstance(child, dict) else child
+                container_children[child_id] = elem["id"]
+
     # Check edge-node clearance (crossing and near-miss)
     clearance_margin = 15
     for eid, sx1, sy1, sx2, sy2 in edge_segments:
         src_id, _, tgt_id = eid.partition("->")
         for box in boxes:
             if box["id"] in (src_id, tgt_id):
+                continue
+            # Skip children of containers the edge connects to
+            parent_id = container_children.get(box["id"])
+            if parent_id and parent_id in (src_id, tgt_id):
                 continue
             if _segment_intersects_box(sx1, sy1, sx2, sy2, box, margin=0):
                 errors.append(
