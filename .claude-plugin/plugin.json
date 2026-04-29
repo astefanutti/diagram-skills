@@ -1,6 +1,6 @@
 {
-  "name": "diagram-skills",
-  "description": "Create presentation-quality draw.io diagrams with LLM-driven layout, programmatic validation, and visual iteration. Includes /drawio for quick diagram generation and /diagram-layout for manual-grade edge routing and coordinate placement.",
+  "name": "diagram-layout",
+  "description": "Presentation-quality draw.io diagram layout with LLM-driven coordinate placement, programmatic validation (crossings, clearance, bends), and visual iteration. Companion to the official jgraph/drawio-mcp skill.",
   "author": {
     "name": "Antonin Stefanutti"
   }

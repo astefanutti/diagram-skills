@@ -1,18 +1,10 @@
-# Diagram Skills for Claude Code
+# Diagram Layout Skill for Claude Code
 
-Two [Claude Code skills](https://docs.anthropic.com/en/docs/claude-code/skills) for creating presentation-quality diagrams as draw.io files.
+A [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code/skills) that generates presentation-quality draw.io diagrams with LLM-driven coordinate layout, programmatic validation, and visual iteration.
 
-## Skills
+## `/diagram-layout`
 
-### `/drawio` — Draw.io Diagram Generation
-
-Generate draw.io diagrams as native `.drawio` files with optional export to PNG, SVG, or PDF. Handles draw.io CLI detection across macOS, Linux, Windows, and WSL2.
-
-**Triggers on**: requests to create diagrams, flowcharts, architecture diagrams, ER diagrams, mockups, wireframes, or any mention of draw.io / `.drawio` files.
-
-### `/diagram-layout` — Presentation-Quality Layout
-
-Generate flow diagrams with manual-grade layout quality using LLM-driven coordinate assignment and visual iteration. Produces drawio files with clean edge routing, semantic grouping, and proper back-edge handling.
+Generate flow diagrams with manual-grade layout quality. Produces drawio files with clean edge routing, semantic grouping, and proper back-edge handling.
 
 **Triggers on**: "layout diagram", "improve diagram layout", "presentation-quality diagram", or diagram requests that mention layout quality.
 
@@ -22,17 +14,21 @@ Generate flow diagrams with manual-grade layout quality using LLM-driven coordin
 - Back-edge exterior routing with nested ordering
 - Container grouping for sub-processes
 - Programmatic validation (overlaps, crossings, clearance, bend detection)
-- Visual iteration via sub-agent inspection
+- Visual iteration via sub-agent inspection (images never enter the main context)
 
 ## Installation
 
-Copy the skills to your Claude Code skills directory:
+Install via a Claude Code plugin marketplace, or manually:
 
 ```bash
-# Global (available in all projects)
-cp -r skills/drawio ~/.claude/skills/drawio
 cp -r skills/diagram-layout ~/.claude/skills/diagram-layout
 ```
+
+### Companion: `/drawio`
+
+For quick diagram generation without the full layout pipeline, install the official [drawio skill](https://github.com/jgraph/drawio-mcp/tree/main/skill-cli) from jgraph. It handles draw.io XML generation and CLI export across all platforms.
+
+> **Image isolation note**: when iterating on diagrams, always inspect exported PNGs via a sub-agent (Agent tool) — never read image files directly in the main context. Images accumulate across iterations and corrupt after context compaction. The `/diagram-layout` skill enforces this automatically.
 
 ### Dependencies
 
@@ -42,7 +38,7 @@ cp -r skills/diagram-layout ~/.claude/skills/diagram-layout
 
 ## Layout Rules
 
-The diagram-layout skill encodes 13 layout rules in `skills/diagram-layout/prompts/layout-rules.md`:
+The skill encodes 13 layout rules in `skills/diagram-layout/prompts/layout-rules.md`:
 
 | Rule | Purpose |
 |------|---------|
@@ -55,9 +51,9 @@ The diagram-layout skill encodes 13 layout rules in `skills/diagram-layout/promp
 | 7. Edge labels | Conditional styling and label placement |
 | 8. S-bend elimination | Align anchors to remove wiggles |
 | 9. No edge through node | Absolute prohibition, the worst defect |
-| 9a. Minimize bends | Exit toward target, nested fan-out |
+| 9a. Minimize bends | Exit toward target, nested fan-out ordering |
 | 10. Edge crossing minimization | Separate forward/back-edge corridors |
-| 11. Cascading re-validation | Full re-score after node moves |
+| 11. Cascading re-validation | Full re-score after any node move |
 | 12. Edge-node clearance | 15px minimum tangent distance |
 | 13. Reserved identifiers | Avoid draw.io reserved cell IDs |
 
@@ -68,7 +64,7 @@ The diagram-layout skill encodes 13 layout rules in `skills/diagram-layout/promp
 3. **Plan** — LLM assigns explicit (x, y, width, height) coordinates following the layout rules
 4. **Render** — JSON layout plan to drawio XML
 5. **Validate** — programmatic checks (overlaps, crossings, clearance, bends)
-6. **Inspect** — sub-agent reads exported PNG and reports issues as text (images never enter main context)
+6. **Inspect** — sub-agent reads exported PNG and reports issues as text
 7. **Iterate** — fix issues and re-render until clean
 
 ## License
