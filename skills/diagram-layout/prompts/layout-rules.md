@@ -150,12 +150,17 @@ Where `corridor_y` is the y midpoint between the two rows, and `trunk_x` is to t
 
 Nodes should be sized to match their content and structural importance, not uniform across the diagram.
 
-**Guidelines**:
-- **Containers**: wider than regular nodes — they enclose children and need room. Height includes title + children + padding
-- **Key subsystems** (execution, scoring): larger to draw attention — they're the core of the workflow
-- **Simple pass-through nodes** (preflight, find-dataset): compact — they're validation gates, not major processing
-- **External service nodes**: small — they're just references, not detailed steps
-- **Entry nodes**: medium — tall enough for CLI args but not dominant
+**Sizing tiers** (enforce these — don't make all nodes the same size):
+
+| Tier | Width | Height | Use for | Visual weight |
+|------|-------|--------|---------|---------------|
+| Large | 350-550 | 120-140 | Containers (Score, Execute, Tool Interception) | Dominant — the core subsystems |
+| Medium | 150-180 | 120-150 | Major processing (Load Config, Prepare Workspace) | Standard — the backbone steps |
+| Small | 120-145 | 80-110 | Minor steps (Preflight, Find Dataset, Collect) | Light — validation gates, pass-through |
+| Compact | 100-130 | 40-55 | External skills, downstream links (/eval-mlflow) | Minimal — just references |
+| Callout | 160-220 | 150-200 | File trees, config snippets | Distinct — reference material |
+
+**The test**: if two nodes have the same width and height but very different importance to the workflow, one of them is mis-sized. Preflight Check should NOT be the same size as Prepare Workspace.
 
 **Anti-pattern**: making all nodes the same size. This produces a monotonous visual rhythm and fails to communicate which steps are the important ones.
 
