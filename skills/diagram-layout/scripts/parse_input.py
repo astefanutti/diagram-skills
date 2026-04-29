@@ -62,7 +62,35 @@ def parse_d2(path):
                 in_edge_block = True
             continue
 
-        # Block start: name: label { or name: { or name { or name: |md
+        # Simple assignment: name: "value" — check BEFORE block_match
+        # to avoid {field} inside quotes triggering block detection
+        simple_match = re.match(r"([\w-]+)\s*:\s*\"(.+?)\"", stripped)
+        if simple_match:
+            node_id = simple_match.group(1)
+            label = simple_match.group(2)
+            if current_block_id and block_depth >= 1:
+                if current_block_id not in containers:
+                    containers[current_block_id] = {
+                        "id": current_block_id,
+                        "label": nodes.get(current_block_id, {}).get(
+                            "label", current_block_id
+                        ),
+                        "children": [],
+                    }
+                containers[current_block_id]["children"].append(node_id)
+            nodes[node_id] = {
+                "id": node_id,
+                "label": label.split("\\n")[0],
+                "details": label.split("\\n")[1:],
+                "role": "processing",
+            }
+            # Trailing { after quotes opens a style/property block
+            trailing = stripped[simple_match.end():]
+            if "{" in trailing and "}" not in trailing:
+                block_depth += 1
+            continue
+
+        # Block start: name: label { or name: { or name {
         block_match = re.match(
             r"([\w-]+)\s*:\s*(.+?)?\s*\{?\s*$", stripped
         )
@@ -112,29 +140,6 @@ def parse_d2(path):
                 "label": block_id,
                 "details": [],
                 "role": _guess_role(block_id, ""),
-            }
-            continue
-
-        # Simple assignment: name: "value"
-        simple_match = re.match(r"([\w-]+)\s*:\s*\"(.+?)\"", stripped)
-        if simple_match and "{" not in stripped:
-            node_id = simple_match.group(1)
-            label = simple_match.group(2)
-            if current_block_id and block_depth >= 1:
-                if current_block_id not in containers:
-                    containers[current_block_id] = {
-                        "id": current_block_id,
-                        "label": nodes.get(current_block_id, {}).get(
-                            "label", current_block_id
-                        ),
-                        "children": [],
-                    }
-                containers[current_block_id]["children"].append(node_id)
-            nodes[node_id] = {
-                "id": node_id,
-                "label": label.split("\\n")[0],
-                "details": label.split("\\n")[1:],
-                "role": "processing",
             }
             continue
 
