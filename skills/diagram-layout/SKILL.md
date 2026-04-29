@@ -117,9 +117,30 @@ Apply the 7 layout patterns in order:
 
 Write the layout plan to a temporary JSON file.
 
-### Step 4: Render
+### Step 4: Programmatic Validation Loop
 
-Convert the layout plan to drawio XML:
+**Before rendering**, iterate on the layout JSON until the validator passes clean. This catches all structural defects (crossings, S-bends, near-misses) without the cost of rendering and visual inspection.
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/validate_layout.py <layout-plan.json>
+```
+
+The validator checks: node overlaps, edge-through-node (errors), edge-edge crossings, near-miss clearance (15px minimum), avoidable bends, and canvas bounds.
+
+**If errors or warnings**: read the validator output, apply the corresponding fix from layout-rules.md, update the layout JSON, and re-run the validator. Repeat until clean.
+
+Fix rules by priority:
+1. **Edge through node** (error) → reroute waypoints to the far exterior, enter target from the side. See Rule 9
+2. **Edge crossing** (warning) → separate corridors, apply nested fan-out ordering, swap exit anchors. See Rules 9a, 10
+3. **Near-miss** (warning) → nudge the nearby node away (prefer moving nodes over edges). See Rule 12. Re-check connected edges for new S-bends (Rule 11 cascading)
+4. **Avoidable bend** (warning) → change exit/entry side to face the target. See Rule 9a
+5. **Canvas overflow** → expand canvas or compress column spacing
+
+**Do NOT render to drawio/PNG until the validator reports zero errors and zero warnings.** The validator is fast (milliseconds); rendering + visual inspection is slow (seconds + sub-agent). Use the validator as the tight inner loop.
+
+### Step 5: Render
+
+Once the validator passes clean, convert to drawio XML:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/render_drawio.py <layout-plan.json> <output.drawio>
@@ -131,48 +152,35 @@ If `--format` was specified, export to the requested format:
 python3 ${CLAUDE_SKILL_DIR}/scripts/export_png.py <output.drawio> <output.drawio.png>
 ```
 
-### Step 5: Visual Validation
+### Step 6: Visual Validation
 
-First, run programmatic validation:
+The visual check catches things the validator cannot: label clipping, text readability, aesthetic spacing, edge label congestion, and routing artifacts from the drawio orthogonal engine that differ from the planned waypoints.
 
-```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/validate_layout.py <layout-plan.json>
-```
-
-This checks for node overlaps, edge-node collisions, container bounds violations, and canvas overflow.
-
-Then spawn a **sub-agent** via the Agent tool to visually inspect the exported PNG. **NEVER read image files (PNG, SVG, PDF, JPG) directly in the main context** — images accumulate across iterations and corrupt after context compaction, causing API errors.
-
-Use the Agent tool like this:
+Spawn a **sub-agent** via the Agent tool to inspect the exported PNG. **NEVER read image files (PNG, SVG, PDF, JPG) directly in the main context** — images accumulate across iterations and corrupt after context compaction, causing API errors.
 
 ```
 Agent({
   description: "Validate diagram layout",
-  prompt: "Read the image at <path-to-exported-png> using the Read tool and inspect it for layout issues. Check: (1) edges routing THROUGH nodes (worst defect — any edge segment crossing a non-connected node's body), (2) S-bends — small S-shaped wiggles on edges between nearly-aligned nodes that should be straight or L-shaped, (3) edge crossings — edges crossing each other, especially back-edges crossing forward edges, (4) back-edges not routing around the far exterior, (5) alternatives not stacked vertically at the same x-position, (6) labels not readable or clipped, (7) containers not properly enclosing their children. Report findings as a numbered list of specific issues with node/edge IDs. If no issues, report 'Layout validation passed'. Do NOT output the image — text only."
+  prompt: "Read the image at <path-to-exported-png> using the Read tool and inspect it for layout issues. Check: (1) edges routing THROUGH nodes, (2) S-bends on edges that should be straight, (3) edge crossings, (4) labels not readable or clipped, (5) edge label congestion — multiple labels overlapping in a tight area, (6) containers not properly enclosing their children, (7) visual hierarchy — can you tell at a glance what the important phases are? Report findings as a numbered list. If no issues, report 'Layout validation passed'. Do NOT output the image — text only."
 })
 ```
 
-The sub-agent returns a text-only report. The main context never sees the image data.
+### Step 7: Iterate on Visual Issues
 
-### Step 6: Iterate
-
-If the sub-agent report from Step 5 identifies issues:
-1. Identify the specific problem from the text report (which nodes overlap, which edges cross)
-2. Adjust the coordinates in the layout plan JSON
-3. Re-run Steps 4 and 5 (rendering + spawning a **new** sub-agent for validation)
-4. Repeat until the layout is clean or `--iterate` limit is reached
+If the sub-agent finds issues the validator missed:
+1. Identify the specific problem from the text report
+2. Adjust coordinates in the layout plan JSON
+3. Re-run Step 4 (validator loop until clean) then Steps 5-6 (render + visual check)
+4. Repeat until clean or `--iterate` limit is reached
 
 Each iteration spawns a fresh sub-agent so no images accumulate in any context.
 
-Common adjustments (in priority order — fix worst defects first):
-- **Edge through node** (worst) → reroute back-edge waypoints to the far exterior (x < leftmost_node_x - 20), enter target from the side instead of bottom. See Rule 9 in layout-rules.md
-- **S-bend** → nudge node by 5-10px or adjust exit/entry anchor fractions so connection points align exactly. See Rule 8
-- **Edge crossing** → separate forward and back-edge corridors. Forward edges use inter-column space; back-edges use far exterior margins. See Rule 10
-- Node overlap → increase spacing or shift one node
-- Container too small → increase container dimensions with 20px padding
+Common visual-only issues (not caught by validator):
 - Label clipped → increase node width
+- Edge label congestion → shift connected nodes apart to create more edge length for label placement
+- Drawio routing artifact → add explicit waypoints to override the orthogonal router's choice
 
-### Step 7: Finalize
+### Step 8: Finalize
 
 Open the final output file:
 
