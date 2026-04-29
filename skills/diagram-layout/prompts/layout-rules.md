@@ -124,6 +124,24 @@ After initial placement, check:
 
 Each row flows left-to-right. Rows connect with a vertical edge from the last node of one row to the first node of the next.
 
+**Row-transition waypoint template**: when the last node of row N connects to the first node of row N+1 (which is back at the left side), route the edge down and left using the shared-trunk pattern:
+```
+exit: bottom of last node in row N
+waypoints: [
+  (exit_x, corridor_y),     // drop to horizontal corridor between rows
+  (trunk_x, corridor_y),    // go left to exterior trunk
+  (trunk_x, target_y)       // drop to target level
+]
+entry: left side of first node in row N+1
+```
+Where `corridor_y` is the y midpoint between the two rows, and `trunk_x` is to the LEFT of all nodes in both rows (x < leftmost_node_x - 15).
+
+**Multiple row-transition edges**: when a node fans out to multiple targets at the start of the next row (e.g., mode branching), use the shared-trunk pattern — same `corridor_y` for all edges, nested `trunk_x` values (inner for closer target, outer for farther). This prevents the horizontal corridors from crossing the vertical trunks.
+
+**Routing around containers between rows**: when an edge crosses rows and a container sits between the source and destination, route the edge OUTSIDE the container's bounding box (right or left, whichever is shorter). Add a waypoint at `container_right_edge + 15px` to clear it.
+
+**Bidirectional subsystems**: when a step has a bidirectional relationship with a subsystem (e.g., execute ↔ tool interception), place the subsystem BELOW the caller. Use vertical edges: solid down from caller to subsystem, dashed up from subsystem back to caller. Offset the entry/exit x-positions slightly (e.g., 0.4 and 0.6) so the two vertical edges are distinguishable.
+
 **Alternative — zigzag**: Row 1 flows left-to-right, Row 2 flows right-to-left, connected at the ends. Works for simple pipelines but confusing for complex ones with side branches.
 
 **Column compression**: before wrapping, try compressing column spacing (reduce from 50px to 30px gaps) or merging tightly-coupled sequential steps. Only wrap if compression still exceeds ~1800px.
