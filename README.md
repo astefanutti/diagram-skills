@@ -1,10 +1,25 @@
-# Diagram Layout Skill for Claude Code
+# Diagram Skills for Claude Code
 
-A [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code/skills) that generates presentation-quality draw.io diagrams with LLM-driven coordinate layout, programmatic validation, and visual iteration.
+[Claude Code skills](https://docs.anthropic.com/en/docs/claude-code/skills) for creating presentation-quality flow diagrams.
 
-## `/diagram-layout`
+## Skills
 
-Generate flow diagrams with manual-grade layout quality. Produces drawio files with clean edge routing, semantic grouping, and proper back-edge handling.
+### `/skill-diagram` — Generate D2 from a Skill
+
+Analyze a Claude Code skill directory and generate a D2 flow diagram capturing its workflow, decision branches, LLM steps, and external dependencies.
+
+**Triggers on**: requests to visualize a skill's architecture, understand its flow, or create documentation diagrams from a skill directory.
+
+**Options**:
+- `--skill <path>` — skill directory to analyze
+- `--output <path>` — output D2 file (default: `<skill-name>-flow.d2`)
+- `--direction <right|down>` — flow direction (default: `right`)
+- `--detail <high|low>` — bullet detail level (default: `high`)
+- `--layout` — also run `/diagram-layout` on the result
+
+### `/diagram-layout` — Presentation-Quality Layout
+
+Take a D2 file (or natural language description) and produce a draw.io diagram with manual-grade layout quality.
 
 **Triggers on**: "layout diagram", "improve diagram layout", "presentation-quality diagram", or diagram requests that mention layout quality.
 
@@ -16,19 +31,35 @@ Generate flow diagrams with manual-grade layout quality. Produces drawio files w
 - Programmatic validation (overlaps, crossings, clearance, bend detection)
 - Visual iteration via sub-agent inspection (images never enter the main context)
 
+## Typical Pipeline
+
+```
+/skill-diagram --skill path/to/my-skill --layout
+```
+
+This analyzes the skill, generates a D2 flow diagram, and passes it through `/diagram-layout` for presentation-quality drawio output — all in one invocation.
+
+Or step by step:
+```
+/skill-diagram --skill path/to/my-skill     # produces my-skill-flow.d2
+# review and edit the D2 if needed
+/diagram-layout --input my-skill-flow.d2     # produces my-skill-flow.drawio
+```
+
 ## Installation
 
 Install via a Claude Code plugin marketplace, or manually:
 
 ```bash
+cp -r skills/skill-diagram ~/.claude/skills/skill-diagram
 cp -r skills/diagram-layout ~/.claude/skills/diagram-layout
 ```
 
 ### Companion: `/drawio`
 
-For quick diagram generation without the full layout pipeline, install the official [drawio skill](https://github.com/jgraph/drawio-mcp/tree/main/skill-cli) from jgraph. It handles draw.io XML generation and CLI export across all platforms.
+For quick one-off diagram generation without the layout pipeline, install the official [drawio skill](https://github.com/jgraph/drawio-mcp/tree/main/skill-cli) from jgraph.
 
-> **Image isolation note**: when iterating on diagrams, always inspect exported PNGs via a sub-agent (Agent tool) — never read image files directly in the main context. Images accumulate across iterations and corrupt after context compaction. The `/diagram-layout` skill enforces this automatically.
+> **Image isolation note**: when iterating on diagrams, always inspect exported PNGs via a sub-agent — never read image files directly in the main context. The `/diagram-layout` skill enforces this automatically.
 
 ### Dependencies
 
@@ -38,7 +69,7 @@ For quick diagram generation without the full layout pipeline, install the offic
 
 ## Layout Rules
 
-The skill encodes 13 layout rules in `skills/diagram-layout/prompts/layout-rules.md`:
+The diagram-layout skill encodes 13 rules in `skills/diagram-layout/prompts/layout-rules.md`:
 
 | Rule | Purpose |
 |------|---------|
@@ -56,16 +87,6 @@ The skill encodes 13 layout rules in `skills/diagram-layout/prompts/layout-rules
 | 11. Cascading re-validation | Full re-score after any node move |
 | 12. Edge-node clearance | 15px minimum tangent distance |
 | 13. Reserved identifiers | Avoid draw.io reserved cell IDs |
-
-## How It Works
-
-1. **Parse** — D2, drawio, or natural language to normalized graph spec
-2. **Analyze** — networkx topology (layers, fan-out, back-edges, topology class)
-3. **Plan** — LLM assigns explicit (x, y, width, height) coordinates following the layout rules
-4. **Render** — JSON layout plan to drawio XML
-5. **Validate** — programmatic checks (overlaps, crossings, clearance, bends)
-6. **Inspect** — sub-agent reads exported PNG and reports issues as text
-7. **Iterate** — fix issues and re-render until clean
 
 ## License
 

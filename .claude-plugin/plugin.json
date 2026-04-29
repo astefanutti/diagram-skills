@@ -1,6 +1,6 @@
 {
-  "name": "diagram-layout",
-  "description": "Presentation-quality draw.io diagram layout with LLM-driven coordinate placement, programmatic validation (crossings, clearance, bends), and visual iteration. Companion to the official jgraph/drawio-mcp skill.",
+  "name": "diagram-skills",
+  "description": "Analyze Claude Code skills and generate presentation-quality flow diagrams. /skill-diagram extracts workflow structure into D2; /diagram-layout produces draw.io files with LLM-driven coordinate placement, programmatic validation, and visual iteration.",
   "author": {
     "name": "Antonin Stefanutti"
   }
