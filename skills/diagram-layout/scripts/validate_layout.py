@@ -125,7 +125,7 @@ def validate(plan):
             })
 
         # Add explicit waypoints
-        wps = elem.get("waypoints", [])
+        wps = elem.get("waypoints") or []
         all_points.extend(wps)
 
         # Add entry point (last waypoint → target anchor)
@@ -196,7 +196,7 @@ def validate(plan):
     for elem in elements:
         if elem.get("type") != "edge":
             continue
-        wps = elem.get("waypoints", [])
+        wps = elem.get("waypoints") or []
         if not wps:
             continue
         ep = elem.get("exit_point")

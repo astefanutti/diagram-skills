@@ -91,7 +91,7 @@ Using the enriched graph spec and these rules, generate a layout plan with expli
       "from": "n1", "to": "c1",
       "label": "",
       "style": "edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333;strokeWidth=1.5;html=1;",
-      "waypoints": null
+      "waypoints": []
     },
     {
       "id": "e_back", "type": "edge",

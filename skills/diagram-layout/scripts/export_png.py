@@ -34,7 +34,7 @@ def main():
 
     try:
         subprocess.run(
-            [cli, "-x", "-f", fmt, "-e", "-b", "10",
+            [cli, "-x", "-f", fmt, "-b", "10",
              "-o", output_path, input_path],
             check=True,
             capture_output=True,
