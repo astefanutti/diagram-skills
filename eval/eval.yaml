@@ -7,7 +7,7 @@ execution:
   mode: case
   arguments: "--skill {skill_path} --output {output_path} --layout"
   timeout: 600
-  max_budget_usd: 5.0
+  max_budget_usd: 25.0
 
 runner:
   type: claude-code
@@ -97,6 +97,14 @@ judges:
       edge routing quality, visual hierarchy, and overall clarity.
     prompt_file: eval/prompts/visual-quality-judge.md
 
+  # Standalone layout quality (no gold standard needed)
+  - name: layout_quality
+    description: |
+      Assess the visual layout quality of the generated diagram
+      independently — edge routing, node separation, readability,
+      aspect ratio, and visual hierarchy. No comparison to reference.
+    prompt_file: eval/prompts/layout-quality-judge.md
+
   # Validator passes clean
   - name: validator_clean
     description: |
@@ -166,6 +174,8 @@ thresholds:
   d2_structure:
     min_pass_rate: 1.0
   visual_quality:
+    min_mean: 3.5
+  layout_quality:
     min_mean: 3.5
   validator_clean:
     min_pass_rate: 0.8
