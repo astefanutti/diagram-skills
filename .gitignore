@@ -4,5 +4,6 @@ __pycache__/
 *.drawio.png
 *.drawio.svg
 *.drawio.pdf
+!eval/dataset/**
 eval/runs/
 tmp/
