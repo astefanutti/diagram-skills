@@ -6,7 +6,7 @@ skill: diagram-skills:skill-diagram
 execution:
   mode: case
   arguments: "--skill {skill_path} --output {output_path} --layout"
-  timeout: 600
+  timeout: 1200
   max_budget_usd: 25.0
 
 runner:
@@ -20,7 +20,15 @@ models:
   judge: claude-opus-4-6
 
 permissions:
-  allow: []
+  allow:
+    - "Read"
+    - "Write"
+    - "Edit"
+    - "Bash"
+    - "Agent"
+    - "Glob"
+    - "Grep"
+    - "Skill"
   deny:
     - "mcp__*"
 

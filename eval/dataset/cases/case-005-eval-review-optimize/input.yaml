@@ -1,3 +1,4 @@
+skill_path: eval/agent-eval-harness/skills/eval-review
 skill_paths:
   - eval/agent-eval-harness/skills/eval-review
   - eval/agent-eval-harness/skills/eval-optimize

@@ -4,3 +4,5 @@ __pycache__/
 *.drawio.png
 *.drawio.svg
 *.drawio.pdf
+eval/runs/
+tmp/
