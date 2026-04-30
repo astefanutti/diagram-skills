@@ -1,0 +1,153 @@
+<mxfile host="Electron">
+  <diagram name="eval-mlflow flow" id="page1">
+    <mxGraphModel dx="1451" dy="1243" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1080" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="50" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#333333;strokeWidth=2;arcSize=10;verticalAlign=middle;fontSize=13;" value="&lt;b&gt;MLflow Server&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;(local / remote)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="60" width="160" x="930" y="467.5" as="geometry" />
+        </mxCell>
+        <mxCell id="2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;strokeWidth=2;arcSize=10;verticalAlign=top;spacingTop=5;" value="&lt;b&gt;/eval-mlflow&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• --run-id&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• --action&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• --config&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="110" width="120" x="60" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="10" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;strokeWidth=2;arcSize=10;verticalAlign=top;spacingTop=5;" value="&lt;b&gt;sync-dataset&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• read case directories&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• extract inputs / expectations&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• schema mapping&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• deduplicate by hash&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="120" width="200" x="360" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="tRpWnj60IrXElWAJ_W7T-72" edge="1" parent="1" source="11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;curved=0;strokeWidth=1.5;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="50">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1010" y="470" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999;strokeWidth=1;arcSize=10;verticalAlign=top;spacingTop=3;fontSize=11;" value="&lt;b&gt;MLflow Dataset&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;N records synced&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="130" x="720" y="405" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" source="10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333;strokeWidth=1.5;html=1;" target="11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="20" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ececec;strokeColor=#333333;strokeWidth=2;arcSize=8;verticalAlign=top;spacingTop=5;container=1;collapsible=0;" value="&lt;b&gt;log-results&lt;/b&gt;" vertex="1">
+          <mxGeometry height="130" width="550" x="360" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="21" parent="20" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999;strokeWidth=1;arcSize=10;verticalAlign=top;spacingTop=3;fontSize=11;" value="&lt;b&gt;Params&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;div&gt;&lt;font style=&quot;font-size:10px&quot;&gt;skill, model&lt;br&gt;runner, run_id&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="87.5" width="90" x="10" y="32.5" as="geometry" />
+        </mxCell>
+        <mxCell id="22" parent="20" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999;strokeWidth=1;arcSize=10;verticalAlign=top;spacingTop=3;fontSize=11;" value="&lt;b&gt;Metrics&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;div&gt;&lt;font style=&quot;font-size:10px&quot;&gt;cost, tokens&lt;br&gt;per-judge scores&lt;br&gt;per-model usage&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="86.66666666666666" width="110" x="110" y="32.5" as="geometry" />
+        </mxCell>
+        <mxCell id="23" parent="20" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999;strokeWidth=1;arcSize=10;verticalAlign=top;spacingTop=3;fontSize=11;" value="&lt;b&gt;Artifacts&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;div&gt;&lt;font style=&quot;font-size:10px&quot;&gt;summary.yaml&lt;br&gt;batch.yaml&lt;br&gt;input.yaml files&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="86.66666666666666" width="110" x="230" y="32.5" as="geometry" />
+        </mxCell>
+        <mxCell id="24" parent="20" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999;strokeWidth=1;arcSize=10;verticalAlign=top;spacingTop=3;fontSize=11;" value="&lt;b&gt;Traces&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;div&gt;&lt;font style=&quot;font-size:10px&quot;&gt;build from&lt;br&gt;stdout.log&lt;br&gt;link to run&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="87.5" width="90" x="350" y="32.5" as="geometry" />
+        </mxCell>
+        <mxCell id="25" parent="20" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999;strokeWidth=1;arcSize=10;verticalAlign=top;spacingTop=3;fontSize=11;" value="&lt;b&gt;Table&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;div&gt;&lt;font style=&quot;font-size:10px&quot;&gt;per-case&lt;br&gt;results&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="87.5" width="80" x="450" y="32.5" as="geometry" />
+        </mxCell>
+        <mxCell id="e20" edge="1" parent="1" source="20" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333;strokeWidth=1.5;html=1;fontStyle=2;fontSize=10;" target="50" value="MLflow Run">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="30" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;strokeWidth=2;arcSize=10;verticalAlign=top;spacingTop=5;" value="&lt;b&gt;push-feedback&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• read summary.yaml&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&amp;nbsp; (judge scores)&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• read review.yaml&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&amp;nbsp; (human comments)&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• attach to traces&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="130" width="200" x="360" y="690" as="geometry" />
+        </mxCell>
+        <mxCell id="tRpWnj60IrXElWAJ_W7T-71" edge="1" parent="1" source="31" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;curved=0;strokeWidth=1.5;" target="50">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="31" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999;strokeWidth=1;arcSize=10;verticalAlign=top;spacingTop=3;fontSize=11;" value="&lt;b&gt;Trace Feedback&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;judge + human&lt;br&gt;assessments&lt;/font&gt;" vertex="1">
+          <mxGeometry height="55" width="130" x="720" y="765" as="geometry" />
+        </mxCell>
+        <mxCell id="e30" edge="1" parent="1" source="30" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333;strokeWidth=1.5;html=1;exitX=1.002;exitY=0.785;exitDx=0;exitDy=0;exitPerimeter=0;" target="31">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="40" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;strokeWidth=2;arcSize=10;verticalAlign=top;spacingTop=5;" value="&lt;b&gt;pull-feedback&lt;/b&gt;&lt;br&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;br&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• read trace assessments&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&amp;nbsp; (from MLflow UI)&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• skip own feedback&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• merge into review.yaml&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="120" width="200" x="360" y="527.5" as="geometry" />
+        </mxCell>
+        <mxCell id="41" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999;strokeWidth=1;arcSize=10;verticalAlign=top;spacingTop=3;fontSize=11;" value="&lt;b&gt;review.yaml&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;mlflow_feedback&lt;br&gt;section updated&lt;/font&gt;" vertex="1">
+          <mxGeometry height="57.5" width="130" x="720" y="590" as="geometry" />
+        </mxCell>
+        <mxCell id="e40" edge="1" parent="1" source="50" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333;strokeWidth=1.5;html=1;entryX=0.999;entryY=0.267;entryDx=0;entryDy=0;entryPerimeter=0;" target="40" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="620" y="498" />
+              <mxPoint x="620" y="560" />
+              <mxPoint x="560" y="560" />
+            </Array>
+            <mxPoint x="550" y="560" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e41" edge="1" parent="1" source="40" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333;strokeWidth=1.5;html=1;" target="41">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="60" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;strokeWidth=2;arcSize=10;verticalAlign=top;spacingTop=5;" value="&lt;b&gt;from-traces&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• search production traces&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• extract span inputs&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• download run artifacts&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&amp;nbsp; (batch.yaml, input.yaml)&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;• output YAML to stdout&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="130" width="200" x="360" y="205" as="geometry" />
+        </mxCell>
+        <mxCell id="61" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999;strokeWidth=1;arcSize=10;verticalAlign=top;spacingTop=3;fontSize=11;" value="&lt;b&gt;Extracted Cases&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;YAML to stdout&lt;br&gt;for /eval-dataset&lt;/font&gt;" vertex="1">
+          <mxGeometry height="55" width="130" x="710" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="e60" edge="1" parent="1" source="50" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333;strokeWidth=1.5;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" target="60" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1010" y="270" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e61" edge="1" parent="1" source="60" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333;strokeWidth=1.5;html=1;exitX=0.999;exitY=0.294;exitDx=0;exitDy=0;exitPerimeter=0;" target="61">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333;strokeWidth=1.5;html=1;" target="20">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="230" y="375" />
+              <mxPoint x="230" y="110" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333;strokeWidth=1.5;html=1;" target="30">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="230" y="375" />
+              <mxPoint x="230" y="705" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333;strokeWidth=1.5;html=1;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="230" y="375" />
+              <mxPoint x="230" y="590" />
+              <mxPoint x="360" y="590" />
+            </Array>
+            <mxPoint x="360" y="590" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333;strokeWidth=1.5;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="60">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="230" y="375" />
+              <mxPoint x="230" y="270" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="70" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#bbb;strokeWidth=1;arcSize=6;align=left;spacingLeft=8;spacingTop=4;verticalAlign=top;fontFamily=Courier New;" value="&lt;font style=&quot;font-size:10px&quot;&gt;&lt;b&gt;eval/runs/{id}/&lt;/b&gt;&lt;br&gt;summary.yaml&lt;br&gt;run_result.json&lt;br&gt;stdout.log&lt;br&gt;batch.yaml&lt;br&gt;review.yaml&lt;/font&gt;" vertex="1">
+          <mxGeometry height="110" width="120" x="590" y="655" as="geometry" />
+        </mxCell>
+        <mxCell id="71" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#bbb;strokeWidth=1;arcSize=6;align=left;spacingLeft=8;spacingTop=4;verticalAlign=top;fontFamily=Courier New;" value="&lt;font style=&quot;font-size:10px&quot;&gt;&lt;b&gt;eval/dataset/cases/&lt;/b&gt;&lt;br&gt;case-001/input.yaml&lt;br&gt;case-001/reference.md&lt;br&gt;...&lt;/font&gt;" vertex="1">
+          <mxGeometry height="80" width="150" x="710" y="290" as="geometry" />
+        </mxCell>
+        <mxCell id="e70" edge="1" parent="1" source="70" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#bbb;strokeWidth=1;dashed=1;dashPattern=4 4;html=1;entryX=0.994;entryY=0.405;entryDx=0;entryDy=0;entryPerimeter=0;" target="30">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e71" edge="1" parent="1" source="71" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#bbb;strokeWidth=1;dashed=1;dashPattern=4 4;html=1;entryX=1;entryY=0.25;entryDx=0;entryDy=0;" target="10">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333;strokeWidth=1.5;html=1;fontStyle=2;fontSize=10;" target="10" value="--action">
+          <mxGeometry relative="1" x="-0.2549" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="230" y="375" />
+              <mxPoint x="230" y="430" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,173 @@
+name: diagram-skills-eval
+description: Evaluate the skill-diagram + diagram-layout pipeline against gold-standard manual diagrams
+
+skill: diagram-skills:skill-diagram
+
+execution:
+  mode: case
+  arguments: "--skill {skill_path} --output {output_path} --layout"
+  timeout: 600
+  max_budget_usd: 5.0
+
+runner:
+  type: claude-code
+  effort: high
+  plugin_dirs:
+    - .   # diagram-skills repo root — provides both skill-diagram and diagram-layout
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+
+permissions:
+  allow: []
+  deny:
+    - "mcp__*"
+
+dataset:
+  path: eval/dataset/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: skill_path (string) or skill_paths (list) pointing to
+      the skill directory to diagram. output_path is the D2 filename.
+    - annotations.yaml: gold_diagram path to the reference .drawio file
+      (null for cases without a gold standard).
+    - reference.md: text description of expected diagram content —
+      nodes, containers, edges, callouts, and visual hierarchy.
+    - gold-standard.drawio: the manually-created reference diagram
+      (present for cases 001-005, absent for case 006).
+
+outputs:
+  - path: artifacts
+    schema: |
+      The skill produces:
+      - A .d2 file (D2 source of the generated diagram)
+      - A .drawio file (draw.io XML from diagram-layout)
+      - A .drawio.png file (exported PNG of the diagram)
+      - A layout JSON file (coordinate plan from diagram-layout)
+
+traces:
+  stdout: true
+  stderr: true
+  events: false
+  metrics: true
+
+judges:
+  # Structural completeness — parse the D2 and check nodes/edges
+  - name: d2_structure
+    description: |
+      Verify the generated D2 has the expected structural elements:
+      nodes for all workflow steps, containers for composite subsystems,
+      edge labels for data flow, and back-edges for loops.
+    check: |
+      import re
+      d2_files = [f for f in outputs.get("files", {}) if f.endswith(".d2")]
+      if not d2_files:
+          d2_content = outputs.get("main_content", "")
+      else:
+          d2_content = outputs["files"][d2_files[0]]
+
+      if not d2_content or len(d2_content) < 100:
+          return False, "No D2 content found or too short"
+
+      # Count structural elements
+      nodes = re.findall(r'^[\w-]+\s*:', d2_content, re.MULTILINE)
+      edges = re.findall(r'->', d2_content)
+      containers = re.findall(r'\{[^}]*\{', d2_content)  # nested braces
+      labels = re.findall(r'->\s*[\w-]+\s*:\s*"', d2_content)
+
+      issues = []
+      if len(nodes) < 5:
+          issues.append(f"Only {len(nodes)} nodes (expected >= 5)")
+      if len(edges) < 4:
+          issues.append(f"Only {len(edges)} edges (expected >= 4)")
+      if len(labels) < 2:
+          issues.append(f"Only {len(labels)} labeled edges (expected >= 2)")
+
+      if issues:
+          return False, "; ".join(issues)
+      return True, f"{len(nodes)} nodes, {len(edges)} edges, {len(labels)} labeled edges"
+
+  # Visual comparison against gold standard
+  - name: visual_quality
+    if: "annotations.get('gold_diagram') is not None"
+    description: |
+      Compare the generated diagram PNG against the gold-standard
+      manual diagram. Score 1-5 on node coverage, container grouping,
+      edge routing quality, visual hierarchy, and overall clarity.
+    prompt_file: eval/prompts/visual-quality-judge.md
+
+  # Validator passes clean
+  - name: validator_clean
+    description: |
+      Check that validate_layout.py reports zero errors and zero warnings
+      on the generated layout JSON.
+    check: |
+      import json, subprocess, glob, os
+
+      # Find the layout JSON in the run output
+      run_dir = os.environ.get("AGENT_EVAL_RUNS_DIR", "eval/runs")
+      layout_files = glob.glob(f"{run_dir}/**/layout*.json", recursive=True)
+
+      if not layout_files:
+          return True, "No layout JSON found (may not have reached layout step)"
+
+      result = subprocess.run(
+          ["python3", "skills/diagram-layout/scripts/validate_layout.py", layout_files[0]],
+          capture_output=True, text=True
+      )
+
+      output = json.loads(result.stdout) if result.stdout.strip() else {}
+      errors = output.get("errors", [])
+      warnings = output.get("warnings", [])
+
+      if errors:
+          return False, f"{len(errors)} errors: {'; '.join(errors[:3])}"
+      if warnings:
+          return False, f"{len(warnings)} warnings: {'; '.join(warnings[:3])}"
+      return True, "Layout validation passed"
+
+  # Edge label quality
+  - name: edge_quality
+    description: |
+      Check that edges have data-flow labels (artifact names),
+      not just condition labels, and back-edges use dashed style.
+    check: |
+      import re
+      d2_files = [f for f in outputs.get("files", {}) if f.endswith(".d2")]
+      if not d2_files:
+          d2_content = outputs.get("main_content", "")
+      else:
+          d2_content = outputs["files"][d2_files[0]]
+
+      if not d2_content:
+          return False, "No D2 content"
+
+      # Check for data-flow labels (artifact names on edges)
+      data_labels = re.findall(
+          r'->\s*[\w-]+\s*:\s*"[^"]*\.(yaml|json|md|html|log)',
+          d2_content
+      )
+
+      # Check for dashed edges (back-edges, optional paths)
+      dashed = re.findall(r'stroke-dash', d2_content)
+
+      issues = []
+      if len(data_labels) < 1:
+          issues.append("No data-flow edge labels (e.g., 'summary.yaml')")
+      if len(dashed) < 1:
+          issues.append("No dashed edges for back-edges or optional paths")
+
+      if issues:
+          return False, "; ".join(issues)
+      return True, f"{len(data_labels)} data-flow labels, {len(dashed)} dashed edges"
+
+thresholds:
+  d2_structure:
+    min_pass_rate: 1.0
+  visual_quality:
+    min_mean: 3.5
+  validator_clean:
+    min_pass_rate: 0.8
+  edge_quality:
+    min_pass_rate: 0.8

@@ -1,0 +1,4 @@
+skill_paths:
+  - eval/agent-eval-harness/skills/eval-review
+  - eval/agent-eval-harness/skills/eval-optimize
+output_path: eval-review-optimize-flow.d2
