@@ -7,7 +7,7 @@ execution:
   mode: case
   arguments: "{skill_args} --output {output_path} --layout"
   timeout: 1800
-  max_budget_usd: 25.0
+  max_budget_usd: 50.0
   parallelism: 6
 
 runner:
@@ -120,21 +120,33 @@ judges:
       Check that validate_layout.py reports zero errors and zero warnings
       on the generated layout JSON.
     check: |
-      import json, subprocess, glob, os
+      import json, subprocess, tempfile, os
 
-      # Find the layout JSON in the run output
-      run_dir = os.environ.get("AGENT_EVAL_RUNS_DIR", "eval/runs")
-      layout_files = glob.glob(f"{run_dir}/**/layout*.json", recursive=True)
+      # Find layout JSON in the case outputs
+      files = outputs.get("files", {})
+      layout_content = None
+      for path, content in files.items():
+          if "layout" in path and path.endswith(".json") and isinstance(content, str):
+              layout_content = content
+              break
 
-      if not layout_files:
+      if not layout_content:
           return True, "No layout JSON found (may not have reached layout step)"
 
-      result = subprocess.run(
-          ["python3", "skills/diagram-layout/scripts/validate_layout.py", layout_files[0]],
-          capture_output=True, text=True
-      )
+      # Write to temp file for the validator script
+      with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
+          tmp.write(layout_content)
+          tmp_path = tmp.name
 
-      output = json.loads(result.stdout) if result.stdout.strip() else {}
+      try:
+          result = subprocess.run(
+              ["python3", "skills/diagram-layout/scripts/validate_layout.py", tmp_path],
+              capture_output=True, text=True
+          )
+          output = json.loads(result.stdout) if result.stdout.strip() else {}
+      finally:
+          os.unlink(tmp_path)
+
       errors = output.get("errors", [])
       warnings = output.get("warnings", [])
 
