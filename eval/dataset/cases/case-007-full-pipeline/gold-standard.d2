@@ -1,0 +1,128 @@
+direction: right
+
+*.style.border-radius: 8
+*.style.font-size: 14
+
+mlflow: |md
+  **MLflow Server**
+
+  (local / remote)
+| {
+  shape: rectangle
+  style.fill: "#f5f5f5"
+  style.stroke: "#333333"
+  style.stroke-width: 2
+  style.font-size: 16
+  style.stroke-dash: 3
+}
+
+setup: |md
+  **/eval-setup**
+
+  - dependencies
+  - MLflow conf
+  - directories
+| {
+  shape: rectangle
+  style.fill: "#f5f5f5"
+  style.stroke: "#333333"
+  style.stroke-width: 2
+  style.stroke-dash: 3
+}
+
+analyze: |md
+  **/eval-analyze**
+
+  - analyze skill
+  - gen eval.yaml
+  - suggest judges
+| {
+  shape: rectangle
+  style.fill: "#f5f5f5"
+  style.stroke: "#333333"
+  style.stroke-width: 2
+}
+
+dataset: |md
+  **/eval-dataset**
+
+  - generate
+  - test cases
+  - fill gaps
+| {
+  shape: rectangle
+  style.fill: "#f5f5f5"
+  style.stroke: "#333333"
+  style.stroke-width: 2
+}
+
+run: |md
+  **/eval-run**
+
+  - execute eval
+  - collect
+  - score
+| {
+  shape: rectangle
+  style.fill: "#f5f5f5"
+  style.stroke: "#333333"
+  style.stroke-width: 2
+}
+
+eval-mlflow: |md
+  **/eval-mlflow**
+
+  - sync dataset
+  - log results
+  - push traces
+| {
+  shape: rectangle
+  style.fill: "#f5f5f5"
+  style.stroke: "#333333"
+  style.stroke-width: 2
+  style.stroke-dash: 3
+}
+
+review: |md
+  **/eval-review**
+
+  - human review
+  - feedback
+| {
+  shape: rectangle
+  style.fill: "#f5f5f5"
+  style.stroke: "#333333"
+  style.stroke-width: 2
+}
+
+optimize: |md
+  **/eval-optimize**
+
+  - improve skill
+  - re-run eval
+| {
+  shape: rectangle
+  style.fill: "#f5f5f5"
+  style.stroke: "#333333"
+  style.stroke-width: 2
+}
+
+# Main pipeline flow
+setup -> analyze -> dataset -> run -> eval-mlflow
+
+# MLflow connections
+setup -> mlflow: setup {
+  style.stroke-dash: 3
+}
+eval-mlflow -> mlflow: "sync, log, feedback" {
+  style.stroke-dash: 3
+}
+mlflow -> dataset: datasets {
+  style.stroke-dash: 3
+}
+
+# Review loop
+run <-> review
+
+# Optimize loop
+run <-> optimize

@@ -1,2 +1,2 @@
-skill_path: eval/agent-eval-harness/skills/eval-setup
+skill_args: "--skill eval/agent-eval-harness/skills/eval-setup"
 output_path: eval-setup-flow.d2

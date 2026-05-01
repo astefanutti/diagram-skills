@@ -1,2 +1,2 @@
-skill_path: eval/agent-eval-harness/skills/eval-run
+skill_args: "--skill eval/agent-eval-harness/skills/eval-run"
 output_path: eval-run-flow.d2

@@ -152,3 +152,44 @@ Use `style.stroke-dash: 3` on the edge. Add a short label: `"errors"`, `"retry"`
 - Use the action verb when no script: `read-config`, `find-dataset`, `gen-yaml`
 - Prefix with the phase if disambiguation is needed: `pre-validate`, `post-collect`
 - Avoid generic names: `process`, `handle`, `do-stuff`
+
+## Multi-Skill Analysis
+
+When diagramming multiple skills together, apply the single-skill extraction to each, then perform cross-skill analysis.
+
+### Cross-Skill Edge Detection
+
+Scan each skill's SKILL.md and scripts for references to other skills in the set:
+- **Skill tool invocations**: `Skill({ skill: "eval-run" })` or "invoke /eval-run" — these are direct edges
+- **Shared artifacts**: files written by one skill and read by another (e.g., skill A writes `summary.yaml`, skill B reads it)
+- **Shared config**: files like `eval.yaml` that multiple skills read or modify
+- **Suggested next steps**: many skills end with "suggest /eval-optimize or /eval-review" — these are downstream pipeline edges
+
+### Pipeline Order Inference
+
+1. Skills with no upstream dependencies are **entry points** (e.g., `/eval-setup`)
+2. Follow Skill tool invocations and artifact flows to determine the sequence
+3. Skills that are invoked by others but invoke nothing are **terminal** (e.g., `/eval-review`)
+4. Bidirectional dependencies indicate **feedback loops** (e.g., `/eval-run` ↔ `/eval-optimize`)
+
+### External Service Detection
+
+Services referenced by multiple skills but not in the skill list become shared external nodes:
+- MLflow server (referenced by eval-setup, eval-mlflow, eval-run)
+- APIs, databases, or CLI tools used across skills
+
+These get a single dashed-border node with edges from each referencing skill.
+
+### Mode Selection
+
+- **Detailed mode** (≤5 skills): one D2 container per skill with internal steps as children. Cross-skill edges connect specific steps (e.g., `review.save-feedback -> optimize.identify-failures: "review.yaml"`). Node IDs are prefixed with the skill name to avoid collisions.
+- **Pipeline mode** (>5 skills): one node per skill with 3-5 bullet summary. Edges show primary data flow between skills. No internal steps visible — the diagram shows orchestration, not implementation.
+
+### Granularity in Pipeline Mode
+
+In pipeline mode, each skill collapses to a single node. The node label should capture:
+- The skill's invocation name (bold)
+- 3-5 bullets describing what it does (the key actions, not the implementation)
+- The node type based on the skill's overall character (entry, processing, external, output)
+
+Aim for 7-12 total nodes including external services. If the pipeline has 15+ skills, group related skills into containers (e.g., "Data Preparation" containing setup + analyze + dataset).

@@ -1,2 +1,2 @@
-skill_path: eval/agent-eval-harness/skills/eval-dataset
+skill_args: "--skill eval/agent-eval-harness/skills/eval-dataset"
 output_path: eval-dataset-flow.d2

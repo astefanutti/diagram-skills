@@ -1,2 +1,2 @@
-skill_path: eval/agent-eval-harness/skills/eval-mlflow
+skill_args: "--skill eval/agent-eval-harness/skills/eval-mlflow"
 output_path: eval-mlflow-flow.d2

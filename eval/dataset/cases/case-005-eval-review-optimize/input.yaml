@@ -1,5 +1,2 @@
-skill_path: eval/agent-eval-harness/skills/eval-review
-skill_paths:
-  - eval/agent-eval-harness/skills/eval-review
-  - eval/agent-eval-harness/skills/eval-optimize
+skill_args: "--skill eval/agent-eval-harness/skills/eval-review --skill eval/agent-eval-harness/skills/eval-optimize"
 output_path: eval-review-optimize-flow.d2

@@ -1,0 +1,9 @@
+skill_args: >-
+  --skill eval/agent-eval-harness/skills/eval-setup
+  --skill eval/agent-eval-harness/skills/eval-analyze
+  --skill eval/agent-eval-harness/skills/eval-dataset
+  --skill eval/agent-eval-harness/skills/eval-run
+  --skill eval/agent-eval-harness/skills/eval-mlflow
+  --skill eval/agent-eval-harness/skills/eval-review
+  --skill eval/agent-eval-harness/skills/eval-optimize
+output_path: eval-pipeline-flow.d2

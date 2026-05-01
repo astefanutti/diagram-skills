@@ -5,9 +5,10 @@ skill: diagram-skills:skill-diagram
 
 execution:
   mode: case
-  arguments: "--skill {skill_path} --output {output_path} --layout"
-  timeout: 1200
+  arguments: "{skill_args} --output {output_path} --layout"
+  timeout: 1800
   max_budget_usd: 25.0
+  parallelism: 6
 
 runner:
   type: claude-code
@@ -36,8 +37,8 @@ dataset:
   path: eval/dataset/cases
   schema: |
     Each case directory contains:
-    - input.yaml: skill_path (string) or skill_paths (list) pointing to
-      the skill directory to diagram. output_path is the D2 filename.
+    - input.yaml: skill_args (string) with --skill flags for the skill(s)
+      to diagram. output_path is the D2 filename.
     - annotations.yaml: gold_diagram path to the reference .drawio file
       (null for cases without a gold standard).
     - reference.md: text description of expected diagram content —
