@@ -6,7 +6,7 @@ skill: diagram-skills:skill-diagram
 execution:
   mode: case
   arguments: "{skill_args} --output {output_path} --layout"
-  timeout: 1800
+  timeout: 2400
   max_budget_usd: 50.0
   parallelism: 6
 

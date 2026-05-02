@@ -59,17 +59,43 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/graph_analysis.py <graph-spec.json>
 
 This uses networkx to compute topological layers, fan-out/fan-in points, back-edges, and classify the topology as `pipeline`, `diamond`, `hub-spoke`, or `complex`. It outputs the enriched graph spec with topology annotations.
 
-### Step 3: Generate Layout Plan
+### Step 3: Generate Layout Plan (two passes)
 
 Read the layout rules and coordinate system:
-- `${CLAUDE_SKILL_DIR}/prompts/layout-rules.md` — the 7 layout patterns
+- `${CLAUDE_SKILL_DIR}/prompts/layout-rules.md` — the layout patterns
 - `${CLAUDE_SKILL_DIR}/prompts/coordinate-system.md` — sizing tables and spacing
 
-Using the enriched graph spec and these rules, generate a layout plan with explicit coordinates. The layout plan is a JSON object:
+Split the layout into two passes to keep each thinking step focused and fast.
+
+#### Step 3a: Place nodes and containers
+
+Generate the layout plan with **only nodes, containers, and canvas** — no edges yet. For each node: assign x, y, width, height based on semantic column, variable sizing, and multi-row wrapping. For containers: size and position around their children.
+
+Apply these patterns:
+1. Assign nodes to semantic columns based on role
+2. Stack fan-out alternatives vertically at the same x
+3. Size and position containers around their children (children must fit with 10px padding)
+4. Position callout boxes in whitespace areas
+5. Set canvas dimensions based on topology class (max width 1400px — wrap to rows if needed)
+
+Write the node-only layout plan to a temporary JSON file. The `elements` array should contain all nodes, containers, and callouts — but edges are omitted for now.
+
+#### Step 3b: Route edges
+
+Read the node-only layout plan back. Now add all edges with explicit waypoints, exit/entry points, labels, and styles. For each edge:
+1. Choose exit/entry sides that face the target (Rule 9a — minimize bends)
+2. Route back-edges around the exterior (Rule 3)
+3. Compute waypoints for edges that need non-trivial routing
+4. Add labels at midpoints without overlapping node bounding boxes (Rule 7)
+5. Verify zero edge crossings (Rule 10)
+
+Append the edge elements to the layout plan and write the complete JSON.
+
+The layout plan JSON format for both passes:
 
 ```json
 {
-  "canvas": {"width": 1920, "height": 800},
+  "canvas": {"width": 1400, "height": 800},
   "elements": [
     {
       "id": "n1", "type": "node",
@@ -105,17 +131,6 @@ Using the enriched graph spec and these rules, generate a layout plan with expli
   ]
 }
 ```
-
-Apply the 7 layout patterns in order:
-1. Assign nodes to semantic columns based on role
-2. Stack fan-out alternatives vertically at the same x
-3. Route back-edges around the exterior with explicit waypoints
-4. Size and position containers around their children
-5. Position callout boxes in whitespace areas
-6. Set canvas dimensions based on topology class
-7. Place edge labels at midpoints without overlap
-
-Write the layout plan to a temporary JSON file.
 
 ### Step 4: Programmatic Validation Loop
 
