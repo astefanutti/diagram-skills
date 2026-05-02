@@ -75,7 +75,8 @@ def validate(plan):
                 f"bottom edge at {bottom} > {canvas['height']}"
             )
 
-    # Check container bounds (children within container)
+    # Check container bounds (children within container with padding)
+    container_padding = 10
     for elem in elements:
         if elem.get("type") != "container":
             continue
@@ -98,6 +99,17 @@ def validate(plan):
                 errors.append(
                     f"Container child {child['id']} overflows container "
                     f"{elem['id']} height: {cy + ch} > {elem['height']}"
+                )
+            if cx < container_padding:
+                warnings.append(
+                    f"Container child {child['id']} has only {cx}px left "
+                    f"padding in {elem['id']} (min {container_padding}px)"
+                )
+            if elem["width"] - (cx + cw) < container_padding:
+                warnings.append(
+                    f"Container child {child['id']} has only "
+                    f"{elem['width'] - cx - cw:.0f}px right padding in "
+                    f"{elem['id']} (min {container_padding}px)"
                 )
 
     # Build lookup for node geometry
@@ -191,6 +203,62 @@ def validate(plan):
                     f"of node {box['id']} (min clearance: "
                     f"{clearance_margin}px)"
                 )
+
+    # Check edge label collision with nodes
+    label_char_width = 7
+    label_height = 16
+    label_padding = 4
+    for elem in elements:
+        if elem.get("type") != "edge":
+            continue
+        label = elem.get("label", "")
+        if not label:
+            continue
+        src = node_geom.get(elem["from"])
+        tgt = node_geom.get(elem["to"])
+        if not (src and tgt):
+            continue
+        wps = elem.get("waypoints") or []
+        pts = []
+        ep = elem.get("exit_point")
+        np_ = elem.get("entry_point")
+        if src and ep:
+            pts.append((src["x"] + ep["x"] * src["width"],
+                        src["y"] + ep["y"] * src["height"]))
+        for w in wps:
+            pts.append((w["x"], w["y"]))
+        if tgt and np_:
+            pts.append((tgt["x"] + np_["x"] * tgt["width"],
+                        tgt["y"] + np_["y"] * tgt["height"]))
+        if len(pts) < 2:
+            # Fallback: midpoint between node centers
+            pts = [(src["x"] + src["width"] / 2, src["y"] + src["height"] / 2),
+                   (tgt["x"] + tgt["width"] / 2, tgt["y"] + tgt["height"] / 2)]
+        # Find longest segment for label placement
+        best_seg = 0
+        best_len = 0
+        for i in range(len(pts) - 1):
+            dx = pts[i + 1][0] - pts[i][0]
+            dy = pts[i + 1][1] - pts[i][1]
+            seg_len = (dx * dx + dy * dy) ** 0.5
+            if seg_len > best_len:
+                best_len = seg_len
+                best_seg = i
+        lx = (pts[best_seg][0] + pts[best_seg + 1][0]) / 2
+        ly = (pts[best_seg][1] + pts[best_seg + 1][1]) / 2
+        lw = len(label) * label_char_width + label_padding * 2
+        lh = label_height + label_padding * 2
+        label_box = {"id": f"label({elem['from']}->{elem['to']})",
+                     "x": lx - lw / 2, "y": ly - lh / 2, "w": lw, "h": lh}
+        for box in boxes:
+            if box["id"] in (elem["from"], elem["to"]):
+                continue
+            if _overlaps(label_box, box, margin=0):
+                warnings.append(
+                    f"Edge label collision: label \"{label}\" on "
+                    f"{elem['from']}->{elem['to']} overlaps node {box['id']}"
+                )
+                break
 
     # Check for excessive bends (suboptimal exit/entry side)
     for elem in elements:

@@ -38,12 +38,13 @@ def parse_d2(path):
                 in_edge_block = False
             continue
 
-        # Edge: a -> b or a -> b: { ... }
+        # Edge chain: a -> b -> c or a <-> b, with optional label/style
         edge_match = re.match(
-            r"([\w-]+)\s*->\s*([\w-]+)(?:\s*:\s*(.+))?", stripped
+            r"([\w-]+(?:\s*(?:<->|->|<-)\s*[\w-]+)+)(?:\s*:\s*(.+))?$", stripped
         )
-        if edge_match:
-            src, tgt, label = edge_match.groups()
+        if edge_match and re.search(r'<->|->|<-', stripped):
+            chain_str = edge_match.group(1)
+            label = edge_match.group(2)
             style = "solid"
             if label and "{" in label:
                 if "stroke-dash" in label:
@@ -51,12 +52,19 @@ def parse_d2(path):
                 label = re.sub(r"\s*\{.*", "", label).strip()
             if label:
                 label = label.strip('" ')
-            edges.append({
-                "from": src,
-                "to": tgt,
-                "label": label or "",
-                "style": style,
-            })
+            # Split chain into individual edges
+            parts = re.split(r'\s*(<->|->|<-)\s*', chain_str)
+            # parts = [node, direction, node, direction, node, ...]
+            for i in range(0, len(parts) - 2, 2):
+                left, direction, right = parts[i], parts[i + 1], parts[i + 2]
+                edge_label = (label or "") if i == len(parts) - 3 else ""
+                if direction == "<->":
+                    edges.append({"from": left, "to": right, "label": edge_label, "style": style})
+                    edges.append({"from": right, "to": left, "label": edge_label, "style": style})
+                elif direction == "<-":
+                    edges.append({"from": right, "to": left, "label": edge_label, "style": style})
+                else:
+                    edges.append({"from": left, "to": right, "label": edge_label, "style": style})
             last_edge_idx = len(edges) - 1
             if "{" in stripped and "}" not in stripped:
                 in_edge_block = True

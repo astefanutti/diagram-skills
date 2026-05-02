@@ -94,9 +94,17 @@ def analyze(spec):
     for nid, layer in layers.items():
         nodes_by_layer.setdefault(layer, []).append(nid)
 
+    # Suggested row assignment for multi-row layouts
+    # Group layers into rows of ~4-5 columns each
+    max_cols_per_row = 5
+    suggested_rows = {}
+    for nid, layer in layers.items():
+        suggested_rows[nid] = layer // max_cols_per_row
+
     spec["topology"] = {
         "layers": layers,
         "nodes_by_layer": nodes_by_layer,
+        "suggested_rows": suggested_rows,
         "fan_out_points": fan_out,
         "fan_in_points": fan_in,
         "back_edges": back_edges,

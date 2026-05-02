@@ -194,28 +194,25 @@ All edges use: `edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;`
 
 This is especially important in compact layouts where edges run close to unconnected nodes.
 
-## Rule 8: S-bend Elimination
+## Rule 8: Edge Quality
 
-Orthogonal edge routing introduces small S-shaped wiggles when source and target anchor points are nearly but not exactly aligned horizontally or vertically. These S-bends look amateurish and must be eliminated.
+All edge quality rules are enforced by `validate_layout.py`. Run the validator after every layout change — it catches these issues programmatically.
 
-**Detection**: After assigning coordinates, for every edge check whether the exit point and entry point are within 15px of being horizontally or vertically aligned. If they are:
+### 8a. No Edge Through Node
 
-**Fix** (in priority order):
-1. **Adjust the anchor point** — change exit_point or entry_point fraction so the connection points align exactly. For example, change `exitY` from `0.5` to `0.48` if that aligns with the target's entry y.
-2. **Nudge the node** — shift the source or target node by a few pixels so their connection points align exactly. A 5-10px shift is invisible to the viewer but eliminates the S-bend.
-3. **Set explicit exit/entry points** — on both ends of the edge to force exact alignment, overriding the router's default anchor selection.
-
-**Rule**: every edge between nodes in the same row (same y-range) must be a straight horizontal line. Every edge between nodes in the same column (same x-range) must be a straight vertical line. Diagonal connections should be clean L-bends (one turn), never S-bends (two opposing turns).
-
-## Rule 9: No Edge Through Node — Absolute Prohibition
-
-Edges must NEVER pass through the bounding box of any node they are not connected to. This is the single worst layout defect — worse than overlaps, worse than crossings.
+Edges must NEVER pass through the bounding box of any node they are not connected to. This is the single worst layout defect.
 
 **The common trap**: back-edges that return to a target via a vertical segment at the target's center x. If there are other nodes between the routing corridor and the target, the vertical segment passes straight through them.
 
 **Verification**: for every edge with waypoints, check that no waypoint segment intersects any non-connected node's bounding box. The `validate_layout.py` script checks this programmatically.
 
-## Rule 9a: Minimize Bends — Exit Toward the Target
+### 8b. S-bend Elimination
+
+S-bends are small S-shaped wiggles when source and target anchor points are nearly but not exactly aligned. Fix by adjusting anchor point fractions so connection points align exactly, or nudge the node by a few pixels.
+
+Every edge between nodes in the same row must be a straight horizontal line. Every edge between nodes in the same column must be a straight vertical line. Cross-row connections should be clean L-bends (one turn), never S-bends.
+
+### 8c. Minimize Bends — Exit Toward the Target
 
 For every edge, choose the exit side that FACES the target and the entry side that FACES the source. This minimizes the number of orthogonal bends (turns).
 
@@ -254,7 +251,7 @@ This ensures the closer target's horizontal sweep stays inside the farther targe
 
 Stagger `entryY` values (e.g., 0.6, 0.7) so entry points don't overlap forward-edge anchors.
 
-## Rule 10: Edge Crossing Prevention
+### 8d. Edge Crossing Prevention
 
 Edge crossings are a critical defect — second only to edges passing through nodes. The goal is ZERO crossings, not "minimized" crossings. Every crossing makes the diagram harder to follow.
 
@@ -267,29 +264,15 @@ Edge crossings are a critical defect — second only to edges passing through no
 
 **Verification**: after laying out all edges, check every pair of edge segments for intersections. If any crossing exists, resolve it before proceeding to rendering. The `validate_layout.py` script flags crossings as errors.
 
-## Rule 11: Cascading Re-validation After Node Moves
+### 8e. Edge-Node Clearance
 
-Moving a node to fix one issue (clearance, overlap, spacing) can introduce new issues on edges connected to or passing near that node. After any node position change, re-check:
+Edges must maintain **15px** minimum clearance from any non-connected node. Fix by nudging the nearby node away (prefer moving nodes over adjusting edge routes — node moves are local and safe, edge route changes can cascade).
 
-1. **S-bends on connected edges**: if the moved node is no longer center-aligned with the node at the other end of an edge, the edge gets an S-bend. Fix by setting explicit exit/entry anchor points so both anchors resolve to the same y (for horizontal edges) or same x (for vertical edges). When two nodes are offset, split the difference — compute a shared y between their centers and set anchor fractions accordingly.
+### 8f. Cascading Re-validation
 
-2. **Near-miss clearance**: the moved node may now be closer to or farther from nearby edges. Re-run the clearance check.
+Every node position change requires a full re-run of the validator. Moving a node to fix one issue can introduce S-bends on connected edges, new near-misses, or new crossings. Never move a node and assume the rest is still valid.
 
-3. **Edge crossings**: new anchor positions may shift edge segments into crossing paths. Re-run the crossing check.
-
-**The general principle**: every node position change requires a full re-score of the layout. Never move a node and assume the rest of the layout is still valid.
-
-## Rule 12: Edge-Node Clearance
-
-Edges must maintain a minimum clearance of **15px** from the bounding box of any non-connected node. An edge passing within this margin looks like it almost touches or belongs to the node, creating visual confusion.
-
-**Detection**: `validate_layout.py` checks every edge segment against every non-connected node with a 15px margin. Near-misses are flagged as warnings with the exact distance.
-
-**Fix — prefer moving the node, not the edge**: when a near-miss is detected, first check whether the nearby node has room to shift away from the edge. Nodes that are loosely constrained (output nodes centered on their source, callout boxes) can often shift 15-25px without disrupting the layout. Only adjust the edge routing if the node is tightly constrained.
-
-**Why move the node**: edge routing is determined by anchor points and waypoints that serve structural purposes (avoiding crossings, minimizing bends). Adjusting them to dodge a nearby node often introduces new problems. Moving the node is a local, safe fix.
-
-## Rule 12: Draw.io Reserved Identifiers
+## Rule 9: Draw.io Reserved Identifiers
 
 The draw.io export CLI silently fails when a cell uses certain reserved identifiers. Known reserved IDs:
 - `push`

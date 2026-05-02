@@ -69,7 +69,7 @@ Split the layout into two passes to keep each thinking step focused and fast.
 
 #### Step 3a: Place nodes and containers
 
-Generate the layout plan with **only nodes, containers, and canvas** — no edges yet. For each node: assign x, y, width, height based on semantic column, variable sizing, and multi-row wrapping. For containers: size and position around their children.
+Generate the layout plan with **only nodes, containers, and canvas** — no edges yet. For each node: assign x, y, width, height based on semantic column, variable sizing, and multi-row wrapping. Use the text width estimation formulas in coordinate-system.md to size each node based on its actual label content — don't guess sizes from the sizing table alone. For containers: size and position around their children.
 
 Apply these patterns:
 1. Assign nodes to semantic columns based on role
@@ -175,10 +175,12 @@ The visual check catches things the validator cannot: label clipping, text reada
 
 Spawn a **sub-agent** via the Agent tool to inspect the exported PNG. **NEVER read image files (PNG, SVG, PDF, JPG) directly in the main context** — images accumulate across iterations and corrupt after context compaction, causing API errors.
 
+The validator already checked structural defects (edge-through-node, crossings, near-misses, container overflow, edge label collisions). The visual check focuses on things the validator cannot catch:
+
 ```
 Agent({
   description: "Validate diagram layout",
-  prompt: "Read the image at <path-to-exported-png> using the Read tool and inspect it for layout issues. Check: (1) edges routing THROUGH nodes, (2) S-bends on edges that should be straight, (3) edge crossings, (4) labels not readable or clipped, (5) edge label congestion — multiple labels overlapping in a tight area, (6) containers not properly enclosing their children, (7) visual hierarchy — can you tell at a glance what the important phases are? Report findings as a numbered list. If no issues, report 'Layout validation passed'. Do NOT output the image — text only."
+  prompt: "Read the image at <path-to-exported-png> using the Read tool. The programmatic validator already passed — focus on VISUAL issues only: (1) labels clipped or unreadable at the rendered size, (2) edge label congestion — multiple labels overlapping in a tight area, (3) containers not visually enclosing their children (render artifacts), (4) poor aspect ratio — is it too wide or too narrow for comfortable viewing? (5) visual hierarchy — can you tell at a glance what the important phases are? Report findings as a numbered list. If no issues, report 'Layout validation passed'. Do NOT output the image — text only."
 })
 ```
 
@@ -199,10 +201,10 @@ Common visual-only issues (not caught by validator):
 
 ### Step 8: Finalize
 
-Open the final output file:
+Open the final output file (macOS: `open`, Linux: `xdg-open`):
 
 ```bash
-open <output-file>
+open <output-file>  # macOS
 ```
 
 Report to the user: output path, number of iterations used, and any remaining warnings from validation.
