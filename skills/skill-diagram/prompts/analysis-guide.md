@@ -59,6 +59,8 @@ These get `style.stroke-dash: 3` (dashed border).
 
 **Always surface integration points**: if the skill connects to an external service (MLflow server, API endpoint, database), show it as a separate dashed-border node even if the skill treats it as incidental. Integration points are high-value information for readers — they show where the skill crosses system boundaries. Look for: environment variable checks, server URLs, API client initialization, health checks.
 
+**Granularity for external nodes**: show services and skills, not scripts. A script like `from_traces.py` is an implementation detail — the reader cares that the skill "pulls traces from MLflow", not which Python file does it. External nodes should be at the same abstraction level as the workflow steps: services (MLflow Server), skills (/eval-run), or CLI tools (draw.io) — never individual script files.
+
 ### 6. Containers for Composite Subsystems
 
 Group related sub-steps into containers when:
@@ -67,10 +69,11 @@ Group related sub-steps into containers when:
 - The grouping clarifies the architecture — showing that these are components of one subsystem, not independent steps
 - **Operations on the same resource**: when multiple steps all act on the same entity (e.g., sync dataset, log results, pull feedback, push feedback all operate on MLflow), group them in a container named after the resource. Compare with the gold standard if available — if it groups operations, your diagram should too.
 
-**Common container patterns in skills:**
+**Common container patterns in skills — these are NOT optional. If the skill has the pattern, use the container:**
 - **Scoring/judging systems**: multiple judge types (inline, LLM, pairwise, external) as children of a "Score" container
-- **Tool/hook systems**: multiple interceptors (AskUserQuestion, Bash, MCP tools) as children of a "Tool Interception" container
+- **Tool/hook systems**: multiple interceptors (AskUserQuestion, Bash, MCP tools) as children of a "Tool Interception" container. If the skill has a tool interception step, it MUST be a container.
 - **Execution with mode variants**: case mode, batch mode, and the headless runner as children of an "Execute Skill" container. This is always a container — it's the core of any evaluation skill.
+- **Configuration/setup groups**: multiple configuration steps (MLflow config, API keys, directories, env vars) as children of a "Configuration" container
 - **Multi-format output**: multiple output artifacts grouped under a "Report" container
 
 Use D2 nested blocks. Container children are simpler nodes (shorter labels, fewer bullets). The container itself has just a title.
@@ -91,6 +94,7 @@ Model these as fan-out alternatives at the same column, stacked vertically, with
 ### 6b. Callout Detail Boxes
 
 Generate callout boxes for concrete examples that ground abstract steps in tangible detail. Look for:
+- **Primary output artifacts**: the skill's main output file (e.g., `eval.yaml`, `review.yaml`, `summary.yaml`) deserves a callout showing its structure — key fields, nesting, what each section contains. These are the most valuable callouts because they show the reader what the skill actually produces.
 - **File trees** created by scripts (e.g., workspace directory structure)
 - **Config snippets** documented in SKILL.md or references (e.g., eval.yaml structure)
 - **YAML/JSON structures** that are central to the skill's data model
@@ -174,6 +178,8 @@ Scan each skill's SKILL.md and scripts for references to other skills in the set
 2. Follow Skill tool invocations and artifact flows to determine the sequence
 3. Skills that are invoked by others but invoke nothing are **terminal** (e.g., `/eval-review`)
 4. Bidirectional dependencies indicate **feedback loops** (e.g., `/eval-run` ↔ `/eval-optimize`)
+
+**Fan-out detection is critical.** When a skill invokes or feeds into multiple downstream skills, this MUST be shown as a fan-out — not collapsed into a linear chain. For example, `/eval-run` feeds into both `/eval-review` (human feedback) and `/eval-optimize` (automated improvement). Missing a fan-out makes the pipeline look linear when it's actually branching. Scan each skill's "Next Steps" or "Suggest" sections — these reveal downstream connections that aren't explicit Skill tool invocations.
 
 ### External Service Detection
 

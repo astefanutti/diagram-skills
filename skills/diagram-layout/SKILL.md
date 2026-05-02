@@ -127,6 +127,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/validate_layout.py <layout-plan.json>
 
 The validator checks: node overlaps, edge-through-node (errors), edge-edge crossings, near-miss clearance (15px minimum), avoidable bends, and canvas bounds.
 
+**All edges MUST use orthogonal routing** — every segment is either perfectly horizontal or perfectly vertical. A tangent (diagonal) segment connecting to a node is a critical defect. If an edge arrives at a node at an angle, fix the exit/entry anchor points so the connection is orthogonal. This is enforced by `edgeStyle=orthogonalEdgeStyle` in the drawio style, but the layout plan coordinates must also be consistent — waypoints must share an x or y coordinate with adjacent waypoints.
+
 **If errors or warnings**: read the validator output, apply the corresponding fix from layout-rules.md, update the layout JSON, and re-run the validator. Repeat until clean.
 
 Fix rules by priority:
