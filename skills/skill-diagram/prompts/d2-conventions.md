@@ -128,6 +128,60 @@ scoring: Score {
 }
 ```
 
+### Multi-Skill Container (detailed mode)
+
+When diagramming ≤5 skills in detailed mode, each skill becomes a container. Prefix child node IDs with the skill name to avoid collisions. Cross-skill edges connect specific steps.
+
+```d2
+review: "eval-review" {
+  style.fill: "#ececec"
+  style.stroke: "#333333"
+  style.stroke-width: 2
+
+  review.load: |md
+    **Load Results**
+
+    - summary.yaml
+    - eval.yaml context
+  |
+  review.walk: |md
+    **Walk Cases**
+
+    - present scores
+    - collect feedback
+  |
+  review.save: |md
+    **Save Feedback**
+
+    - review.yaml
+  |
+  review.load -> review.walk
+  review.walk -> review.save
+}
+
+optimize: "eval-optimize" {
+  style.fill: "#ececec"
+  style.stroke: "#333333"
+  style.stroke-width: 2
+
+  optimize.failures: |md
+    **Identify Failures**
+
+    - failure map
+    - read review.yaml
+  |
+  optimize.edit: |md
+    **Edit Skill**
+
+    - targeted SKILL.md changes
+  |
+  optimize.failures -> optimize.edit
+}
+
+# Cross-skill edge
+review.save -> optimize.failures: "review.yaml"
+```
+
 ### Callout Detail Box
 
 Concrete example grounding an abstract step (file tree, config snippet, YAML structure). Light border, monospace, connected by dashed line.
@@ -246,7 +300,7 @@ workspace: |md
 
 ## Layout Hints
 
-- Declare nodes in the order they appear in the flow — D2 layout engines use declaration order as a hint for vertical positioning
+- Declare nodes in the order they appear in the flow — the dagre layout engine uses declaration order as a hint for vertical positioning. The ELK engine (used for report SVG rendering) uses its own algorithm and may order differently — write clear edge declarations to guide layout rather than relying on declaration order alone.
 - When a node fans out to multiple alternatives, declare the alternatives in top-to-bottom order (primary first, fallback last)
 - Keep edge declarations after all node declarations, grouped by phase
 - Use comments (`#`) to separate phases/sections

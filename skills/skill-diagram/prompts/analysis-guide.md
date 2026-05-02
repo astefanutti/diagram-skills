@@ -69,12 +69,12 @@ Group related sub-steps into containers when:
 - The grouping clarifies the architecture — showing that these are components of one subsystem, not independent steps
 - **Operations on the same resource**: when multiple steps all act on the same entity (e.g., sync dataset, log results, pull feedback, push feedback all operate on MLflow), group them in a container named after the resource. Compare with the gold standard if available — if it groups operations, your diagram should too.
 
-**Common container patterns in skills — these are NOT optional. If the skill has the pattern, use the container:**
-- **Scoring/judging systems**: multiple judge types (inline, LLM, pairwise, external) as children of a "Score" container
-- **Tool/hook systems**: multiple interceptors (AskUserQuestion, Bash, MCP tools) as children of a "Tool Interception" container. If the skill has a tool interception step, it MUST be a container.
-- **Execution with mode variants**: case mode, batch mode, and the headless runner as children of an "Execute Skill" container. This is always a container — it's the core of any evaluation skill.
-- **Configuration/setup groups**: multiple configuration steps (MLflow config, API keys, directories, env vars) as children of a "Configuration" container
-- **Multi-format output**: multiple output artifacts grouped under a "Report" container
+**Common container patterns in skills.** These patterns produce better diagrams because they show internal structure that a single flat node hides. When a skill matches one of these patterns, the container version is almost always clearer:
+- **Scoring/judging systems**: multiple judge types (inline, LLM, pairwise, external) → "Score" container
+- **Tool/hook systems**: multiple interceptors (AskUserQuestion, Bash, MCP tools) → "Tool Interception" container
+- **Execution with mode variants**: case mode, batch mode, headless runner → "Execute Skill" container
+- **Configuration/setup groups**: multiple config steps (MLflow config, API keys, directories) → "Configuration" container
+- **Multi-format output**: multiple output artifacts → "Report" container
 
 Use D2 nested blocks. Container children are simpler nodes (shorter labels, fewer bullets). The container itself has just a title.
 

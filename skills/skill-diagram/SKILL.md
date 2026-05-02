@@ -1,6 +1,6 @@
 ---
 name: skill-diagram
-description: Analyze one or more Claude Code skills and generate a D2 flow diagram of their workflow. Use when the user wants to visualize a skill's architecture, understand its flow, create documentation diagrams, or show how multiple skills connect in a pipeline.
+description: Analyze one or more Claude Code skills and generate a D2 flow diagram of their workflow. Use when the user wants to visualize a skill's architecture, understand its flow, create documentation diagrams, or show how multiple skills connect in a pipeline. Also trigger on "how does this skill work", "show me the flow", "what's the pipeline", "diagram this", "draw the workflow", or when the user is examining a SKILL.md and asks about understanding its structure.
 ---
 
 # Skill Diagram
@@ -14,6 +14,7 @@ Analyze Claude Code skill directories and generate a D2 flow diagram capturing w
 - `--direction <right|down>` — flow direction (default: `right`)
 - `--detail <high|low>` — `high` shows per-script bullets; `low` shows phase-level summaries (default: `high`). `low` also forces pipeline mode for multi-skill diagrams.
 - `--layout` — after generating D2, invoke `/diagram-layout` on the output
+- `--validate` — run `d2 fmt` on the output to check D2 syntax before reporting success
 
 ## Mode Selection (multi-skill)
 
@@ -26,12 +27,7 @@ When multiple `--skill` flags are provided, the diagram mode is selected automat
 
 ### Step 1: Read the Skill(s)
 
-For each `--skill` path, read the full contents of the skill directory:
-1. `SKILL.md` — the primary source of workflow structure
-2. `scripts/` — each script is a potential processing node; read docstrings, function names, and main() flow
-3. `prompts/` — prompt files indicate LLM steps
-4. `references/` — reference docs may reveal architectural context
-5. Any other files (agents/, templates/, etc.)
+For each `--skill` path, read SKILL.md first — it's almost always sufficient for the flow structure. Only read `scripts/` if the SKILL.md references specific scripts by name (e.g., "run validate_eval.py") or if the workflow is too sparse to determine the flow from SKILL.md alone. Prompt and reference files rarely add nodes.
 
 Build a mental model of: what does this skill do, in what order, with what branches?
 
@@ -43,6 +39,10 @@ For multi-skill diagrams, additionally scan each SKILL.md for:
 ### Step 2: Analyze the Flow
 
 Read `${CLAUDE_SKILL_DIR}/prompts/analysis-guide.md` for the extraction framework.
+
+Run `python3 ${CLAUDE_SKILL_DIR}/scripts/extract_steps.py <SKILL.md>` to get a structured skeleton of steps and skill invocations. Use this as the starting point for your analysis — it catches step headings and skill references that are easy to miss in a long SKILL.md.
+
+If the SKILL.md doesn't use `### Step N` headings, look for: numbered lists (`1. First`, `2. Second`), phase headings (`## Phase 1`), or a `## Workflow` section with prose. The extract_steps.py script handles the common patterns; for freeform prose, identify the sequence yourself from the narrative flow.
 
 #### Single skill
 
@@ -100,6 +100,14 @@ For multi-skill pipeline mode: use the skill name as the node ID.
 
 Write the D2 file to the `--output` path.
 
+If `--validate` was specified (or always, as a good practice), check the D2 syntax:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/validate_d2.py <output.d2>
+```
+
+If errors are found, fix them before proceeding.
+
 ### Step 4: Output
 
 Report to the user:
@@ -113,3 +121,5 @@ If `--layout` was specified, invoke the `/diagram-layout` skill on the output D2
 ```
 Skill({ skill: "diagram-layout", args: "--input <d2-file>" })
 ```
+
+If `/diagram-layout` fails or times out, the D2 file is still useful — it can be rendered directly with `d2 --layout elk <file>.d2 <file>.svg`. Report this to the user with the D2 file path as a fallback.
