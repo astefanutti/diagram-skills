@@ -113,9 +113,9 @@ After initial placement, check:
 
 ## Rule 6a: Pipeline Wrapping for Wide Diagrams
 
-**Maximum comfortable canvas width: ~1800px.** When a left-to-right pipeline has more than 7-8 semantic columns, a single horizontal strip becomes too wide for comfortable viewing (requires horizontal scrolling, doesn't fit on screens or slides).
+**Maximum comfortable canvas width: ~1400px.** When a left-to-right pipeline has more than 6 semantic columns, a single horizontal strip becomes too wide for comfortable viewing (requires horizontal scrolling, doesn't fit on screens or slides). A diagram wider than 1400px is a layout defect.
 
-**When to wrap**: if the initial column layout exceeds 1800px width, restructure the diagram into 2-3 rows:
+**When to wrap**: if the initial column layout exceeds 1400px width, restructure the diagram into 2-3 rows. With `direction: right`, prefer vertical wrapping (top-to-bottom then left-to-right) so edge labels on horizontal segments stay readable without overlapping nearby nodes:
 
 **Preferred approach — semantic phase rows**: group related steps into horizontal phases, stacked vertically:
 - **Row 1 (top)**: Setup phase — entry, config, dataset, preflight, workspace
@@ -164,6 +164,12 @@ Nodes should be sized to match their content and structural importance, not unif
 
 **Anti-pattern**: making all nodes the same size. This produces a monotonous visual rhythm and fails to communicate which steps are the important ones.
 
+**Container child sizing**: container children must fit entirely within the container's bounding box. After placing children, verify:
+- No child's text overflows its box (estimate text width: ~7px per character at font-size 13)
+- No child extends beyond the container's right or bottom edge
+- The container has at least 10px padding on all sides around its children
+If children overflow, either widen the child nodes or expand the container. Never let text clip.
+
 ## Rule 7: Edge Labels and Conditional Styling
 
 For conditional edges (decision branches, error paths, shortcuts):
@@ -180,6 +186,13 @@ Edge style by type:
 - **Callout connection**: `dashed=1;dashPattern=4 4;strokeColor=#bbbbbb;strokeWidth=1;`
 
 All edges use: `edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;`
+
+**Edge label collision avoidance**: after placing all edge labels, verify that no label overlaps a node's bounding box. Labels on horizontal edge segments are placed along the segment — if the segment passes near a node, the label will overlap it. Fix by:
+1. Moving the label to a different segment of the same edge (prefer the longest segment)
+2. Adjusting the label's offset perpendicular to the edge (increase from 5px to 15-20px)
+3. If the edge has only one short segment near a node, shorten the label text
+
+This is especially important in compact layouts where edges run close to unconnected nodes.
 
 ## Rule 8: S-bend Elimination
 
@@ -241,13 +254,18 @@ This ensures the closer target's horizontal sweep stays inside the farther targe
 
 Stagger `entryY` values (e.g., 0.6, 0.7) so entry points don't overlap forward-edge anchors.
 
-## Rule 10: Edge Crossing Minimization
+## Rule 10: Edge Crossing Prevention
 
-When back-edges share routing corridors with forward edges, they create crossings. Minimize crossings by:
+Edge crossings are a critical defect — second only to edges passing through nodes. The goal is ZERO crossings, not "minimized" crossings. Every crossing makes the diagram harder to follow.
 
-1. **Enter from the source side** (Rule 9a): the single most effective technique. Right-side entry keeps back-edges entirely in the right exterior corridor, away from all forward-flow edges.
-2. **Separate corridors**: forward edges use the space between columns. Back-edges use the far exterior margin (right of rightmost column).
-3. **Stagger parallel back-edges**: when multiple back-edges share the exterior route, stagger their x positions by 10px and offset their entry anchor points (e.g., `entryY=0.6` vs `entryY=0.7`) to keep them visually distinct and avoid overlapping anchors with forward edges.
+**Prevention strategy** (apply in order):
+1. **Separate corridors**: forward edges use the space between columns. Back-edges use the exterior margins (top or bottom).
+2. **Choose the less crowded side**: back-edges route above (top) or below (bottom) the main flow — pick the side with fewer existing edges.
+3. **Enter from the source side** (Rule 9a): right-side entry keeps back-edges entirely in the exterior corridor, away from all forward-flow edges.
+4. **Stagger parallel back-edges**: when multiple back-edges share the exterior route, stagger their y positions (top-routing) or x positions (bottom-routing) by 15px.
+5. **Reorder nodes vertically**: if two forward edges cross, swap the vertical positions of the target nodes to uncross them. This is always preferable to complex waypoint routing.
+
+**Verification**: after laying out all edges, check every pair of edge segments for intersections. If any crossing exists, resolve it before proceeding to rendering. The `validate_layout.py` script flags crossings as errors.
 
 ## Rule 11: Cascading Re-validation After Node Moves
 

@@ -47,7 +47,7 @@ Identify nodes that use LLM capabilities:
 
 These get `style.double-border: true` and `style.fill: "#e8e8e8"`. Add "LLM" or "agent" to the subtitle if helpful.
 
-### 5. External Dependencies
+### 5. External Dependencies and Integration Points
 
 Things outside the skill that it calls or depends on:
 - Other skills invoked via the Skill tool
@@ -57,12 +57,15 @@ Things outside the skill that it calls or depends on:
 
 These get `style.stroke-dash: 3` (dashed border).
 
+**Always surface integration points**: if the skill connects to an external service (MLflow server, API endpoint, database), show it as a separate dashed-border node even if the skill treats it as incidental. Integration points are high-value information for readers — they show where the skill crosses system boundaries. Look for: environment variable checks, server URLs, API client initialization, health checks.
+
 ### 6. Containers for Composite Subsystems
 
 Group related sub-steps into containers when:
 - A step has 3+ internal variants or sub-modes the reader would benefit from seeing individually
 - The sub-steps share a title/phase name (e.g., "Scoring" contains inline/LLM/external)
 - The grouping clarifies the architecture — showing that these are components of one subsystem, not independent steps
+- **Operations on the same resource**: when multiple steps all act on the same entity (e.g., sync dataset, log results, pull feedback, push feedback all operate on MLflow), group them in a container named after the resource. Compare with the gold standard if available — if it groups operations, your diagram should too.
 
 **Common container patterns in skills:**
 - **Scoring/judging systems**: multiple judge types (inline, LLM, pairwise, external) as children of a "Score" container
