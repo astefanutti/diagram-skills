@@ -54,6 +54,9 @@ outputs:
       - A .drawio file (draw.io XML from diagram-layout)
       - A .drawio.png file (exported PNG of the diagram)
       - A layout JSON file (coordinate plan from diagram-layout)
+    types:
+      graph-spec.json: graph
+      layout-plan.json: graph
 
 traces:
   stdout: true
