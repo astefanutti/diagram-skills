@@ -26,9 +26,13 @@ If `--input` is provided, run the parser to extract the graph specification:
 python3 ${CLAUDE_SKILL_DIR}/scripts/parse_input.py <input-path>
 ```
 
-This outputs a normalized JSON graph spec to stdout with nodes, edges, containers, and callouts.
+This outputs a normalized JSON graph spec to stdout. Save it to `artifacts/graph-spec.json`:
 
-If no input file, construct the graph spec directly from the user's natural language description. The spec format is:
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/parse_input.py <input-path> > artifacts/graph-spec.json
+```
+
+If no input file, construct the graph spec directly from the user's natural language description and write it to `artifacts/graph-spec.json`. The spec format is:
 
 ```json
 {
@@ -51,13 +55,13 @@ Node roles: `entry`, `processing`, `decision`, `output`, `external`, `optional`.
 
 ### Step 2: Analyze Topology
 
-Run the graph analysis script:
+Run the graph analysis script on the saved graph spec:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/graph_analysis.py <graph-spec.json>
+python3 ${CLAUDE_SKILL_DIR}/scripts/graph_analysis.py artifacts/graph-spec.json > artifacts/graph-spec.json.tmp && mv artifacts/graph-spec.json.tmp artifacts/graph-spec.json
 ```
 
-This uses networkx to compute topological layers, fan-out/fan-in points, back-edges, and classify the topology as `pipeline`, `diamond`, `hub-spoke`, or `complex`. It outputs the enriched graph spec with topology annotations.
+This uses networkx to compute topological layers, fan-out/fan-in points, back-edges, and classify the topology as `pipeline`, `diamond`, `hub-spoke`, or `complex`. It enriches the graph spec with topology annotations in place.
 
 ### Step 3: Generate Layout Plan (two passes)
 
@@ -78,18 +82,18 @@ Apply these patterns:
 4. Position callout boxes in whitespace areas
 5. Set canvas dimensions based on topology class (max width 1400px — wrap to rows if needed)
 
-Write the node-only layout plan to a temporary JSON file. The `elements` array should contain all nodes, containers, and callouts — but edges are omitted for now.
+Write the node-only layout plan to `artifacts/layout-plan.json`. The `elements` array should contain all nodes, containers, and callouts — but edges are omitted for now.
 
 #### Step 3b: Route edges
 
-Read the node-only layout plan back. Now add all edges with explicit waypoints, exit/entry points, labels, and styles. For each edge:
+Read `artifacts/layout-plan.json` back. Now add all edges with explicit waypoints, exit/entry points, labels, and styles. For each edge:
 1. Choose exit/entry sides that face the target (Rule 9a — minimize bends)
 2. Route back-edges around the exterior (Rule 3)
 3. Compute waypoints for edges that need non-trivial routing
 4. Add labels at midpoints without overlapping node bounding boxes (Rule 7)
 5. Verify zero edge crossings (Rule 10)
 
-Append the edge elements to the layout plan and write the complete JSON.
+Append the edge elements to the layout plan and write the complete `artifacts/layout-plan.json`.
 
 The layout plan JSON format for both passes:
 
@@ -137,7 +141,7 @@ The layout plan JSON format for both passes:
 **Before rendering**, iterate on the layout JSON until the validator passes clean. This catches all structural defects (crossings, S-bends, near-misses) without the cost of rendering and visual inspection.
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/validate_layout.py <layout-plan.json>
+python3 ${CLAUDE_SKILL_DIR}/scripts/validate_layout.py artifacts/layout-plan.json
 ```
 
 The validator checks: node overlaps, edge-through-node (errors), edge-edge crossings, near-miss clearance (15px minimum), avoidable bends, and canvas bounds.
