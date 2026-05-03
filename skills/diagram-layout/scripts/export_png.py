@@ -32,10 +32,14 @@ def main():
 
     cli = get_drawio_cli()
 
+    cmd = [cli, "-x", "-f", fmt, "-b", "10"]
+    if fmt == "svg":
+        cmd.append("--embed-diagram")
+    cmd.extend(["-o", output_path, input_path])
+
     try:
         subprocess.run(
-            [cli, "-x", "-f", fmt, "-b", "10",
-             "-o", output_path, input_path],
+            cmd,
             check=True,
             capture_output=True,
             text=True,

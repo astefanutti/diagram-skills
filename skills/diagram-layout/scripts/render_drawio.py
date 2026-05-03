@@ -2,8 +2,34 @@
 """Convert a layout plan JSON into drawio XML."""
 
 import json
+import re
 import sys
-from html import escape
+
+
+def _escape_for_xml_attr(html_label: str) -> str:
+    """Escape an HTML label for use in an XML attribute value.
+
+    The label_html contains HTML markup (<b>, <br>, etc.) that drawio
+    interprets when rendering. We need to escape this for the XML
+    attribute context (value="...") without double-encoding existing
+    HTML entities like &lt; which represent literal angle brackets.
+
+    Strategy: escape & first (but not existing entities), then < > "
+    """
+    # Protect existing entities from double-encoding: &lt; &gt; &amp; &quot;
+    # by temporarily replacing them with placeholders
+    MARKER = "\x07"  # BEL character, won't appear in label text
+    protected = re.sub(r'&(lt|gt|amp|quot|#\d+|#x[0-9a-fA-F]+);',
+                       MARKER + r'\1' + MARKER, html_label)
+    # Now escape the raw characters for XML attribute
+    protected = protected.replace('&', '&amp;')
+    protected = protected.replace('<', '&lt;')
+    protected = protected.replace('>', '&gt;')
+    protected = protected.replace('"', '&quot;')
+    # Restore protected entities
+    protected = re.sub(MARKER + r'([^' + MARKER + r']+)' + MARKER,
+                       r'&\1;', protected)
+    return protected
 
 
 def render(plan):
@@ -73,7 +99,7 @@ def render(plan):
 
 
 def _vertex(cid, label, x, y, w, h, style, parent="1"):
-    label_escaped = escape(label)
+    label_escaped = _escape_for_xml_attr(label)
     geom = (
         f'      <mxGeometry x="{x}" y="{y}" '
         f'width="{w}" height="{h}" as="geometry"/>\n'
@@ -88,7 +114,8 @@ def _vertex(cid, label, x, y, w, h, style, parent="1"):
 
 def _edge(eid, source, target, label, style, waypoints=None,
           exit_point=None, entry_point=None):
-    label_escaped = escape(label) if label else ""
+    label_escaped = _escape_for_xml_attr(label) if label else ""
+
 
     # Add exit/entry points to style
     full_style = style
