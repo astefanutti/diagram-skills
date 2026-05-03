@@ -83,16 +83,16 @@ Apply these patterns:
 5. Position callout boxes in whitespace areas
 6. Set canvas dimensions to fit the layout
 
-Write the node-only layout plan to `artifacts/layout-plan.json`. The `elements` array should contain all nodes, containers, and callouts — but edges are omitted for now.
+Write the node-only layout plan to `artifacts/layout-plan.json`. The `elements` array after Step 3a contains only nodes, containers, and callouts — no edge elements. Step 3b appends edges.
 
 #### Step 3b: Route edges
 
 Read `artifacts/layout-plan.json` back. Now add all edges with explicit waypoints, exit/entry points, labels, and styles. For each edge:
-1. Choose exit/entry sides that face the target (Rule 9a — minimize bends)
+1. Choose exit/entry sides that face the target (Rule 8c — minimize bends)
 2. Route back-edges around the exterior (Rule 3)
 3. Compute waypoints for edges that need non-trivial routing
 4. Add labels at midpoints without overlapping node bounding boxes (Rule 7)
-5. Verify zero edge crossings (Rule 10)
+5. Verify zero edge crossings (Rule 8d)
 
 Append the edge elements to the layout plan and write the complete `artifacts/layout-plan.json`.
 
@@ -100,7 +100,7 @@ The layout plan JSON format for both passes:
 
 ```json
 {
-  "canvas": {"width": 1400, "height": 800},
+  "canvas": {"width": 1600, "height": 700},
   "elements": [
     {
       "id": "n1", "type": "node",
@@ -149,13 +149,13 @@ The validator checks: node overlaps, edge-through-node (errors), edge-edge cross
 
 **All edges MUST use orthogonal routing** — every segment is either perfectly horizontal or perfectly vertical. A tangent (diagonal) segment connecting to a node is a critical defect. If an edge arrives at a node at an angle, fix the exit/entry anchor points so the connection is orthogonal. This is enforced by `edgeStyle=orthogonalEdgeStyle` in the drawio style, but the layout plan coordinates must also be consistent — waypoints must share an x or y coordinate with adjacent waypoints.
 
-**If errors or warnings**: read the validator output, apply the corresponding fix from layout-rules.md, update the layout JSON, and re-run the validator. Repeat until clean.
+**If errors or warnings**: read the validator output, apply the corresponding fix from layout-rules.md, update the layout JSON, and re-run the validator. Repeat until clean or up to **5 iterations**. If still not clean after 5 iterations, proceed to rendering — some layouts oscillate between fixes, and the visual sub-agent can assess the remaining issues in context.
 
 Fix rules by priority:
-1. **Edge through node** (error) → reroute waypoints to the far exterior, enter target from the side. See Rule 9
-2. **Edge crossing** (warning) → separate corridors, apply nested fan-out ordering, swap exit anchors. See Rules 9a, 10
-3. **Near-miss** (warning) → nudge the nearby node away (prefer moving nodes over edges). See Rule 12. Re-check connected edges for new S-bends (Rule 11 cascading)
-4. **Avoidable bend** (warning) → change exit/entry side to face the target. See Rule 9a
+1. **Edge through node** (error) → reroute waypoints to the far exterior, enter target from the side. See Rule 8a
+2. **Edge crossing** (warning) → separate corridors, apply nested fan-out ordering, swap exit anchors. See Rules 8c, 8d
+3. **Near-miss** (warning) → nudge the nearby node away (prefer moving nodes over edges). See Rule 8e. Re-check connected edges for new S-bends (Rule 8f cascading)
+4. **Avoidable bend** (warning) → change exit/entry side to face the target. See Rule 8c
 5. **Canvas overflow** → expand canvas or compress column spacing
 
 **Do NOT render to drawio/PNG until the validator reports zero errors and zero warnings.** The validator is fast (milliseconds); rendering + visual inspection is slow (seconds + sub-agent). Use the validator as the tight inner loop.
@@ -180,12 +180,16 @@ The visual check catches things the validator cannot: label clipping, text reada
 
 Spawn a **sub-agent** via the Agent tool to inspect the exported PNG. **NEVER read image files (PNG, SVG, PDF, JPG) directly in the main context** — images accumulate across iterations and corrupt after context compaction, causing API errors.
 
-The validator already checked structural defects (edge-through-node, crossings, near-misses, container overflow, edge label collisions). The visual check focuses on things the validator cannot catch:
+The validator already checked structural defects (edge-through-node, crossings, near-misses, container overflow, edge label collisions). The visual check focuses on things the validator cannot catch.
+
+**Skip the visual check** for simple diagrams: if the validator passed clean on the first try AND the graph has ≤8 nodes with no containers, proceed directly to Step 8. The visual check adds 200-400s and mostly catches label clipping in complex layouts.
+
+For diagrams that need visual validation:
 
 ```
 Agent({
   description: "Validate diagram layout",
-  prompt: "Read the image at <path-to-exported-png> using the Read tool. The programmatic validator already passed — focus on VISUAL issues only: (1) labels clipped or unreadable at the rendered size, (2) edge label congestion — multiple labels overlapping in a tight area, (3) containers not visually enclosing their children (render artifacts), (4) poor aspect ratio — is it too wide or too narrow for comfortable viewing? (5) visual hierarchy — can you tell at a glance what the important phases are? Report findings as a numbered list. If no issues, report 'Layout validation passed'. Do NOT output the image — text only."
+  prompt: "Read the image at <path-to-exported-png> using the Read tool. The programmatic validator already passed — focus on VISUAL issues only: (1) labels clipped or unreadable at the rendered size, (2) edge label congestion — multiple labels overlapping in a tight area, (3) containers not visually enclosing their children (render artifacts), (4) visual hierarchy — can you tell at a glance what the important phases are? The diagram uses fan-out stacking and containers for aspect ratio control (NOT row wrapping) — do not suggest wrapping into rows unless the ratio exceeds 5:1. Report findings as a numbered list. If no issues, report 'Layout validation passed'. Do NOT output the image — text only."
 })
 ```
 

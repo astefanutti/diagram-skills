@@ -95,8 +95,13 @@ def analyze(spec):
         nodes_by_layer.setdefault(layer, []).append(nid)
 
     # Suggested row assignment for multi-row layouts
-    # Group layers into rows of ~4-5 columns each
-    max_cols_per_row = 5
+    # Topology-aware columns per row: pipelines can be wider
+    if topo_class == "pipeline":
+        max_cols_per_row = 7
+    elif topo_class == "complex":
+        max_cols_per_row = 4
+    else:
+        max_cols_per_row = 5
     suggested_rows = {}
     for nid, layer in layers.items():
         suggested_rows[nid] = layer // max_cols_per_row

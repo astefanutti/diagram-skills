@@ -1,6 +1,6 @@
 # Pattern Catalog — Annotated Manual Diagram Examples
 
-Real coordinate examples from 5 hand-crafted diagrams. Use these as reference when choosing positions.
+Real coordinate examples from 5 hand-crafted diagrams. Use the **layout patterns** (fan-out stacking, container grouping, back-edge routing) as reference — exact coordinates and canvas sizes may differ from current generated output.
 
 ## 1. eval-analyze — Pipeline with Conditional Branching
 

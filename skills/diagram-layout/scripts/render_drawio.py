@@ -154,6 +154,7 @@ def _default_node_style():
         "rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;"
         "strokeColor=#333333;strokeWidth=2;arcSize=10;"
         "verticalAlign=top;spacingTop=5;fontSize=11;"
+        "fontFamily=JetBrains Mono;"
     )
 
 
@@ -162,6 +163,7 @@ def _default_container_style():
         "rounded=1;whiteSpace=wrap;html=1;fillColor=#ececec;"
         "strokeColor=#333333;strokeWidth=2;container=1;collapsible=0;"
         "verticalAlign=top;spacingTop=5;fontSize=12;fontStyle=1;"
+        "fontFamily=JetBrains Mono;"
     )
 
 
@@ -169,6 +171,7 @@ def _default_edge_style():
     return (
         "edgeStyle=orthogonalEdgeStyle;rounded=1;"
         "strokeColor=#333333;strokeWidth=1.5;html=1;"
+        "fontFamily=JetBrains Mono;"
     )
 
 

@@ -56,47 +56,47 @@ Callout boxes:
 
 ```
 # Standard node
-rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;strokeWidth=2;arcSize=10;verticalAlign=top;spacingTop=5;fontSize=11;
+rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;strokeWidth=2;arcSize=10;verticalAlign=top;spacingTop=5;fontSize=11;fontFamily=JetBrains Mono;
 
 # Emphasized node (external systems, key outputs)
-rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#333333;strokeWidth=2;arcSize=10;verticalAlign=middle;fontSize=11;
+rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#333333;strokeWidth=2;arcSize=10;verticalAlign=middle;fontSize=11;fontFamily=JetBrains Mono;
 
 # Optional/external node (dashed border)
-rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#333333;strokeWidth=2;arcSize=10;dashed=1;dashPattern=8 4;verticalAlign=middle;fontSize=11;
+rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#333333;strokeWidth=2;arcSize=10;dashed=1;dashPattern=8 4;verticalAlign=middle;fontSize=11;fontFamily=JetBrains Mono;
 
 # Light output node
-rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=1;arcSize=10;verticalAlign=middle;fontSize=11;
+rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=1;arcSize=10;verticalAlign=middle;fontSize=11;fontFamily=JetBrains Mono;
 
 # Callout detail box
-rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;strokeWidth=1;arcSize=6;verticalAlign=top;spacingTop=5;align=left;spacingLeft=8;fontSize=10;fontFamily=Courier New;
+rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;strokeWidth=1;arcSize=6;verticalAlign=top;spacingTop=5;align=left;spacingLeft=8;fontSize=10;fontFamily=JetBrains Mono;
 
 # Container (group)
-rounded=1;whiteSpace=wrap;html=1;fillColor=#ececec;strokeColor=#333333;strokeWidth=2;container=1;collapsible=0;verticalAlign=top;spacingTop=5;fontSize=12;fontStyle=1;
+rounded=1;whiteSpace=wrap;html=1;fillColor=#ececec;strokeColor=#333333;strokeWidth=2;container=1;collapsible=0;verticalAlign=top;spacingTop=5;fontSize=12;fontStyle=1;fontFamily=JetBrains Mono;
 
 # Container (review phase - blue)
-rounded=1;whiteSpace=wrap;html=1;fillColor=#ececec;strokeColor=#4285f4;strokeWidth=2;container=1;collapsible=0;verticalAlign=top;spacingTop=5;fontSize=12;fontStyle=1;
+rounded=1;whiteSpace=wrap;html=1;fillColor=#ececec;strokeColor=#4285f4;strokeWidth=2;container=1;collapsible=0;verticalAlign=top;spacingTop=5;fontSize=12;fontStyle=1;fontFamily=JetBrains Mono;
 
 # Container (optimize phase - green)
-rounded=1;whiteSpace=wrap;html=1;fillColor=#ececec;strokeColor=#34a853;strokeWidth=2;container=1;collapsible=0;verticalAlign=top;spacingTop=5;fontSize=12;fontStyle=1;
+rounded=1;whiteSpace=wrap;html=1;fillColor=#ececec;strokeColor=#34a853;strokeWidth=2;container=1;collapsible=0;verticalAlign=top;spacingTop=5;fontSize=12;fontStyle=1;fontFamily=JetBrains Mono;
 ```
 
 ### Edge styles
 
 ```
 # Forward edge (solid)
-edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333333;strokeWidth=1.5;html=1;
+edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333333;strokeWidth=1.5;html=1;fontFamily=JetBrains Mono;
 
 # Conditional/optional edge (dashed)
-edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333333;strokeWidth=1.5;dashed=1;dashPattern=8 4;html=1;
+edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333333;strokeWidth=1.5;dashed=1;dashPattern=8 4;html=1;fontFamily=JetBrains Mono;
 
 # Back-edge / feedback loop (dashed, with waypoints)
-edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333333;strokeWidth=1.5;dashed=1;dashPattern=8 4;html=1;
+edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333333;strokeWidth=1.5;dashed=1;dashPattern=8 4;html=1;fontFamily=JetBrains Mono;
 
 # Callout connection (light dashed)
-edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#bbbbbb;strokeWidth=1;dashed=1;dashPattern=4 4;html=1;
+edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#bbbbbb;strokeWidth=1;dashed=1;dashPattern=4 4;html=1;fontFamily=JetBrains Mono;
 
 # Data flow hint (very light)
-edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#999999;strokeWidth=1;dashed=1;dashPattern=4 4;html=1;
+edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#999999;strokeWidth=1;dashed=1;dashPattern=4 4;html=1;fontFamily=JetBrains Mono;
 ```
 
 ### Label HTML patterns
@@ -117,10 +117,10 @@ edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#999999;strokeWidth=1;dashed
 
 ## Estimating Text Width
 
-For sizing nodes to fit their content:
-- Average character width at fontSize=11: ~6.5px
-- Average character width at fontSize=12: ~7px
-- Average character width at fontSize=13: ~7.5px
+For sizing nodes to fit their content (JetBrains Mono):
+- Average character width at fontSize=11: ~7.2px
+- Average character width at fontSize=12: ~7.8px
+- Average character width at fontSize=13: ~8.4px
 - Line height: ~16px for fontSize=11, ~18px for fontSize=12-13
 - Add spacingTop (5px) + spacingBottom (5px) + border (4px)
 - Minimum internal padding: 10px left + 10px right

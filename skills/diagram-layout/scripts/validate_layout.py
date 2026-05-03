@@ -64,11 +64,16 @@ def validate(plan):
         actual_ratio = cw / max(ch, 1)
     else:
         actual_ratio = ch / max(cw, 1)
+    if not topology:
+        warnings.append(
+            f"No topology annotations — using default aspect ratio target "
+            f"{target_ratio:.1f}:1. Run graph_analysis.py first for accurate targets."
+        )
     if actual_ratio > target_ratio * 1.5:
         warnings.append(
             f"Aspect ratio {actual_ratio:.1f}:1 exceeds target "
-            f"{target_ratio:.1f}:1 by >50% — consider wrapping "
-            f"{'column-first (down then right)' if direction in ('right', 'left') else 'row-first (right then down)'}"
+            f"{target_ratio:.1f}:1 by >50% — try fan-out stacking and "
+            f"container grouping first, row wrapping only as fallback"
         )
 
     # Check canvas bounds

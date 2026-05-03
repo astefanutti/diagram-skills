@@ -253,9 +253,6 @@ Edges must maintain **15px** minimum clearance from any non-connected node. Fix 
 
 Every node position change requires a full re-run of the validator. Moving a node to fix one issue can introduce S-bends on connected edges, new near-misses, or new crossings. Never move a node and assume the rest is still valid.
 
-## Rule 9: Draw.io Reserved Identifiers
+## Note: Draw.io Reserved Identifiers
 
-The draw.io export CLI silently fails when a cell uses certain reserved identifiers. Known reserved IDs:
-- `push`
-
-**Fix**: never use bare reserved words as cell IDs. Append a suffix (e.g., `pushfb`, `push_node`, `push1`).
+The draw.io export CLI silently fails when a cell uses certain reserved identifiers. Known reserved IDs: `push`. Fix: append a suffix (e.g., `pushfb`, `push_node`, `push1`).
