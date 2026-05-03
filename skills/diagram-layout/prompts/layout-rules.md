@@ -111,33 +111,21 @@ After initial placement, check:
 - If diagram fills less than 60% of canvas → shrink canvas
 - Back-edge routes at bottom may require extra canvas height (add route_y + 30)
 
-## Rule 6a: Wrapping for Aspect Ratio Control
+## Rule 6a: Aspect Ratio Control
 
-**When to wrap**: after initial node placement, compute the actual aspect ratio. If it exceeds the target ratio for the topology class (from Rule 6) by more than 50%, the diagram is too elongated and needs wrapping. The `validate_layout.py` script checks this.
+After initial placement, check the aspect ratio against the target for the topology class (Rule 6). If the diagram is too elongated, apply these strategies in priority order — each one compresses width and increases height naturally. Most diagrams need only strategies 1-2.
 
-**The orthogonal axis** (perpendicular to the flow direction) serves two purposes: fan-out stacking (Rule 2) and wrapping. Both use the same axis, so they compose naturally.
+**Strategy 1 — Fan-out stacking (primary).** This is the most effective aspect ratio control. Parallel alternatives at the same pipeline stage stack vertically at the same x-position (Rule 2). Every fan-out cluster compressed this way reduces width by one column and increases height. The gold standard diagrams achieve good ratios entirely through this mechanism.
 
-### For `direction: right` — column-first wrapping
+**Strategy 2 — Container grouping.** Group 3+ related steps into containers (Rule 5). A container with internal layout is more compact than the same steps laid out individually. Containers also communicate semantic grouping to the reader.
 
-Wrap by grouping nodes into **vertical columns** of 3-4 nodes each. Each column flows top-to-bottom. Columns are placed left-to-right. This matches how fan-out alternatives stack (vertically) and keeps edge labels on horizontal segments readable.
+**Strategy 3 — Spacing compression.** Reduce column spacing from 50px to 30px gaps, or merge tightly-coupled sequential steps into single nodes. This can recover 100-200px of width without changing the topology.
 
-**Semantic column grouping** — group by pipeline phase:
-- **Column 1**: Entry + Config + Dataset (setup phase)
-- **Column 2**: Preflight + Workspace + callouts (preparation phase)
-- **Column 3**: Hooks + Execute + Collect (execution phase)
-- **Column 4**: Score + Report + MLflow (output phase)
+**Strategy 4 — Row wrapping (fallback only).** If strategies 1-3 still leave the aspect ratio >50% above target, break the pipeline into rows. Each row flows left-to-right. Rows are stacked top-to-bottom with vertical transition edges. Wrap incrementally — identify the widest pipeline segment, wrap only that segment into a new row, then re-check. Don't wrap the entire diagram at once.
 
-**Column transitions**: horizontal edge from the last node of one column to the top node of the next column. Use a clean L-bend — exit from the right side of the source, enter from the left side of the target.
-
-### For `direction: down` — row-first wrapping
-
-Mirror of the above: group nodes into **horizontal rows** of 3-4 nodes each. Each row flows left-to-right. Rows are stacked top-to-bottom. Transitions are vertical edges between row ends.
-
-### General wrapping guidelines
+**When NOT to wrap**: most diagrams with ≤12 nodes don't need wrapping. The gold standard eval-analyze (12 nodes, ~1600px wide) uses no wrapping — fan-out stacking alone keeps the ratio at 2.7:1.
 
 **Bidirectional subsystems**: when a step has a bidirectional relationship with a subsystem (e.g., execute ↔ tool interception), place the subsystem on the orthogonal axis (below for `direction: right`, to the right for `direction: down`).
-
-**Column/row compression**: before wrapping, try compressing spacing (reduce from 50px to 30px gaps) or merging tightly-coupled sequential steps. Only wrap if compression still produces an aspect ratio exceeding the target by >50%.
 
 ## Rule 6b: Variable Node Sizing by Complexity
 
