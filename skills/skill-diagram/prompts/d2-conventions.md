@@ -305,6 +305,22 @@ workspace: |md
 - Keep edge declarations after all node declarations, grouped by phase
 - Use comments (`#`) to separate phases/sections
 
+## Pipeline Fan-Out Example
+
+In pipeline mode (>5 skills), show fan-out as separate edges from one source to multiple targets — NOT a linear chain:
+
+```d2
+# Correct: fan-out from eval-run
+run -> eval-mlflow: "log results"
+run -> review: "human feedback"
+run -> optimize: "auto-improve"
+```
+
+```d2
+# Wrong: linear chain misrepresents the topology
+run -> eval-mlflow -> review -> optimize
+```
+
 ## Complete Example
 
 See the eval-dataset diagram as a representative example of all conventions:

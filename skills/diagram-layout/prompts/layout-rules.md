@@ -37,27 +37,30 @@ For fan-in (multiple nodes converging to one), position the fan-in target center
 
 ## Rule 3: Back-Edge Exterior Routing
 
-Back-edges (loops, feedback) MUST route around the diagram exterior, never through nodes:
+Back-edges (loops, feedback) MUST route around nodes, never through them:
 
 1. Identify the back-edge direction (typically leftward in a left-to-right diagram)
-2. Choose routing side: bottom for most cases, top if bottom is crowded
-3. Create waypoints forming a U-shape:
-   - Exit the source node from the bottom (exitY=1) or side
-   - Drop down to `route_y = max(all_node_bottom_y) + 50`
-   - Travel horizontally to align with the target
-   - Enter the target from the bottom (entryY=1) or side
+2. Choose routing side: **top is preferred** for short back-edges (adjacent nodes), bottom for long back-edges that span many columns
+3. **Keep loops compact** — route only as far below/above as needed to clear the nodes between source and target, not the entire diagram. For a back-edge between adjacent nodes, route just 30-40px above or below them.
 
-Waypoint template for bottom-routed back-edge (left-to-right diagram):
+Waypoint template for **top-routed** short back-edge (the most common case — validation retry loops):
 ```
-exit: (source_center_x, source_bottom)
+exit: (source_center_x, source_top)
 waypoints: [
   (source_center_x, route_y),
   (target_center_x, route_y)
 ]
-entry: (target_center_x, target_bottom)
+entry: (target_center_x, target_top)
 ```
 
-Where `route_y = max(all_node_bottom_y) + 50` to clear everything.
+Where `route_y = min(source_top, target_top) - 30` — just above the involved nodes.
+
+For **long back-edges** spanning many columns, use bottom routing:
+```
+route_y = max(source_bottom, target_bottom) + 40
+```
+
+The key principle: route_y should be relative to the **involved nodes**, not the entire diagram. A validation retry loop between two adjacent nodes should be a tight arc, not a wide sweep across the full canvas.
 
 For multiple back-edges, stagger the route_y values (each 25px lower) to prevent overlapping routes.
 

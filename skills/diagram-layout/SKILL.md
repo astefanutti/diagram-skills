@@ -89,9 +89,9 @@ Write the node-only layout plan to `artifacts/layout-plan.json`. The `elements` 
 
 Read `artifacts/layout-plan.json` back. Now add all edges with explicit waypoints, exit/entry points, labels, and styles. For each edge:
 1. Choose exit/entry sides that face the target (Rule 8c — minimize bends)
-2. Route back-edges around the exterior (Rule 3)
+2. Route back-edges compactly (Rule 3) — short loops route above, long ones below. Keep loops tight to the involved nodes.
 3. Compute waypoints for edges that need non-trivial routing
-4. Add labels at midpoints without overlapping node bounding boxes (Rule 7)
+4. Add labels at midpoints along the **longest segment** of each edge, offset perpendicular. Verify no label overlaps any node bounding box — the validator checks this.
 5. Verify zero edge crossings (Rule 8d)
 
 Append the edge elements to the layout plan and write the complete `artifacts/layout-plan.json`.
