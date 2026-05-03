@@ -210,10 +210,26 @@ Common visual-only issues (not caught by validator):
 
 ### Step 8: Finalize
 
+Write a metrics summary to `artifacts/skill-metrics.json` with layout statistics:
+
+```json
+{
+  "nodes": 12,
+  "edges": 14,
+  "containers": 2,
+  "validation_iterations": 3,
+  "visual_iterations": 1,
+  "canvas_width": 1600,
+  "canvas_height": 700,
+  "aspect_ratio": 2.3,
+  "topology": "diamond"
+}
+```
+
 Open the final output file (macOS: `open`, Linux: `xdg-open`):
 
 ```bash
 open <output-file>  # macOS
 ```
 
-Report to the user: output path, number of iterations used, and any remaining warnings from validation.
+Report to the user: output path, metrics summary, and any remaining warnings.

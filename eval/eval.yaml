@@ -57,6 +57,7 @@ outputs:
     types:
       graph-spec.json: graph
       layout-plan.json: graph
+      skill-metrics.json: metrics
 
 traces:
   stdout: true
