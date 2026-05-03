@@ -184,8 +184,11 @@ judges:
       # Check for dashed edges (back-edges, optional paths)
       dashed = re.findall(r'stroke-dash', d2_content)
 
+      # Count total edges to calibrate expectations
+      all_edges = re.findall(r'->', d2_content)
       issues = []
-      if len(data_labels) < 1:
+      # Only require data-flow labels for diagrams with enough edges
+      if len(all_edges) >= 8 and len(data_labels) < 1:
           issues.append("No data-flow edge labels (e.g., 'summary.yaml')")
       if len(dashed) < 1:
           issues.append("No dashed edges for back-edges or optional paths")

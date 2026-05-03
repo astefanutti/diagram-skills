@@ -179,7 +179,16 @@ Scan each skill's SKILL.md and scripts for references to other skills in the set
 3. Skills that are invoked by others but invoke nothing are **terminal** (e.g., `/eval-review`)
 4. Bidirectional dependencies indicate **feedback loops** (e.g., `/eval-run` ↔ `/eval-optimize`)
 
-**Fan-out detection is critical.** When a skill invokes or feeds into multiple downstream skills, this MUST be shown as a fan-out — not collapsed into a linear chain. For example, `/eval-run` feeds into both `/eval-review` (human feedback) and `/eval-optimize` (automated improvement). Missing a fan-out makes the pipeline look linear when it's actually branching. Scan each skill's "Next Steps" or "Suggest" sections — these reveal downstream connections that aren't explicit Skill tool invocations.
+**Fan-out detection is critical.** When a skill invokes or feeds into multiple downstream skills, show ALL downstream connections as a fan-out — not a linear chain. A linear chain `A → B → C` means B must complete before C starts. A fan-out `A → B` and `A → C` means both B and C are downstream of A independently.
+
+Concrete example: `/eval-run` feeds into three downstream skills:
+- `/eval-run → /eval-mlflow` (log results)
+- `/eval-run → /eval-review` (human feedback)
+- `/eval-run → /eval-optimize` (automated improvement)
+
+These are three separate edges from eval-run, not a chain `eval-run → eval-mlflow → eval-review → eval-optimize`. Missing a fan-out is a structural error — it misrepresents the pipeline topology.
+
+How to detect: scan each skill's "Next Steps", "Suggest", or final step for references to other skills. If a skill suggests 3 downstream skills, it has fan-out degree 3.
 
 ### External Service Detection
 

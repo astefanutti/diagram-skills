@@ -77,10 +77,11 @@ Generate the layout plan with **only nodes, containers, and canvas** — no edge
 
 Apply these patterns:
 1. Assign nodes to semantic columns based on role
-2. Stack fan-out alternatives vertically at the same x
-3. Size and position containers around their children (children must fit with 10px padding)
-4. Position callout boxes in whitespace areas
-5. Set canvas dimensions based on topology class (max width 1400px — wrap to rows if needed)
+2. Stack fan-out alternatives vertically (orthogonal to the flow direction)
+3. **Wrap column-first** for `direction: right`: group nodes into vertical columns of 3-4 nodes, columns placed left-to-right. Check the aspect ratio against the topology target (Rule 6a) — if the diagram is too elongated, wrap. This is the most common layout defect: a single horizontal strip instead of a compact multi-column layout.
+4. Size and position containers around their children (children must fit with 10px padding)
+5. Position callout boxes in whitespace areas
+6. Set canvas dimensions to fit the wrapped layout
 
 Write the node-only layout plan to `artifacts/layout-plan.json`. The `elements` array should contain all nodes, containers, and callouts — but edges are omitted for now.
 
