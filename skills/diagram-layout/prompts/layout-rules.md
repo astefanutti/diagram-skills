@@ -111,40 +111,33 @@ After initial placement, check:
 - If diagram fills less than 60% of canvas → shrink canvas
 - Back-edge routes at bottom may require extra canvas height (add route_y + 30)
 
-## Rule 6a: Pipeline Wrapping for Wide Diagrams
+## Rule 6a: Wrapping for Aspect Ratio Control
 
-**Maximum comfortable canvas width: ~1400px.** When a left-to-right pipeline has more than 6 semantic columns, a single horizontal strip becomes too wide for comfortable viewing (requires horizontal scrolling, doesn't fit on screens or slides). A diagram wider than 1400px is a layout defect.
+**When to wrap**: after initial node placement, compute the actual aspect ratio. If it exceeds the target ratio for the topology class (from Rule 6) by more than 50%, the diagram is too elongated and needs wrapping. The `validate_layout.py` script checks this.
 
-**When to wrap**: if the initial column layout exceeds 1400px width, restructure the diagram into 2-3 rows. With `direction: right`, prefer vertical wrapping (top-to-bottom then left-to-right) so edge labels on horizontal segments stay readable without overlapping nearby nodes:
+**The orthogonal axis** (perpendicular to the flow direction) serves two purposes: fan-out stacking (Rule 2) and wrapping. Both use the same axis, so they compose naturally.
 
-**Preferred approach — semantic phase rows**: group related steps into horizontal phases, stacked vertically:
-- **Row 1 (top)**: Setup phase — entry, config, dataset, preflight, workspace
-- **Row 2 (middle)**: Execution phase — execute, hooks, collect
-- **Row 3 (bottom)**: Scoring + Reporting phase — score, analyze, report, mlflow
+### For `direction: right` — column-first wrapping
 
-Each row flows left-to-right. Rows connect with a vertical edge from the last node of one row to the first node of the next.
+Wrap by grouping nodes into **vertical columns** of 3-4 nodes each. Each column flows top-to-bottom. Columns are placed left-to-right. This matches how fan-out alternatives stack (vertically) and keeps edge labels on horizontal segments readable.
 
-**Row-transition waypoint template**: when the last node of row N connects to the first node of row N+1 (which is back at the left side), route the edge down and left using the shared-trunk pattern:
-```
-exit: bottom of last node in row N
-waypoints: [
-  (exit_x, corridor_y),     // drop to horizontal corridor between rows
-  (trunk_x, corridor_y),    // go left to exterior trunk
-  (trunk_x, target_y)       // drop to target level
-]
-entry: left side of first node in row N+1
-```
-Where `corridor_y` is the y midpoint between the two rows, and `trunk_x` is to the LEFT of all nodes in both rows (x < leftmost_node_x - 15).
+**Semantic column grouping** — group by pipeline phase:
+- **Column 1**: Entry + Config + Dataset (setup phase)
+- **Column 2**: Preflight + Workspace + callouts (preparation phase)
+- **Column 3**: Hooks + Execute + Collect (execution phase)
+- **Column 4**: Score + Report + MLflow (output phase)
 
-**Multiple row-transition edges**: when a node fans out to multiple targets at the start of the next row (e.g., mode branching), use the shared-trunk pattern — same `corridor_y` for all edges, nested `trunk_x` values (inner for closer target, outer for farther). This prevents the horizontal corridors from crossing the vertical trunks.
+**Column transitions**: horizontal edge from the last node of one column to the top node of the next column. Use a clean L-bend — exit from the right side of the source, enter from the left side of the target.
 
-**Routing around containers between rows**: when an edge crosses rows and a container sits between the source and destination, route the edge OUTSIDE the container's bounding box (right or left, whichever is shorter). Add a waypoint at `container_right_edge + 15px` to clear it.
+### For `direction: down` — row-first wrapping
 
-**Bidirectional subsystems**: when a step has a bidirectional relationship with a subsystem (e.g., execute ↔ tool interception), place the subsystem BELOW the caller. Use vertical edges: solid down from caller to subsystem, dashed up from subsystem back to caller. Offset the entry/exit x-positions slightly (e.g., 0.4 and 0.6) so the two vertical edges are distinguishable.
+Mirror of the above: group nodes into **horizontal rows** of 3-4 nodes each. Each row flows left-to-right. Rows are stacked top-to-bottom. Transitions are vertical edges between row ends.
 
-**Alternative — zigzag**: Row 1 flows left-to-right, Row 2 flows right-to-left, connected at the ends. Works for simple pipelines but confusing for complex ones with side branches.
+### General wrapping guidelines
 
-**Column compression**: before wrapping, try compressing column spacing (reduce from 50px to 30px gaps) or merging tightly-coupled sequential steps. Only wrap if compression still exceeds ~1800px.
+**Bidirectional subsystems**: when a step has a bidirectional relationship with a subsystem (e.g., execute ↔ tool interception), place the subsystem on the orthogonal axis (below for `direction: right`, to the right for `direction: down`).
+
+**Column/row compression**: before wrapping, try compressing spacing (reduce from 50px to 30px gaps) or merging tightly-coupled sequential steps. Only wrap if compression still produces an aspect ratio exceeding the target by >50%.
 
 ## Rule 6b: Variable Node Sizing by Complexity
 

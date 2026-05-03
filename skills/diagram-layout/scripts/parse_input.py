@@ -15,6 +15,12 @@ def parse_d2(path):
     nodes = {}
     edges = []
     containers = {}
+    direction = "right"
+
+    # Extract direction directive
+    dir_match = re.search(r'^direction:\s*(right|down|left|up)', content, re.MULTILINE)
+    if dir_match:
+        direction = dir_match.group(1)
 
     lines = content.split("\n")
     current_block = None
@@ -54,17 +60,17 @@ def parse_d2(path):
                 label = label.strip('" ')
             # Split chain into individual edges
             parts = re.split(r'\s*(<->|->|<-)\s*', chain_str)
-            # parts = [node, direction, node, direction, node, ...]
+            # parts = [node, arrow, node, arrow, node, ...]
             for i in range(0, len(parts) - 2, 2):
-                left, direction, right = parts[i], parts[i + 1], parts[i + 2]
+                left_node, arrow, right_node = parts[i], parts[i + 1], parts[i + 2]
                 edge_label = (label or "") if i == len(parts) - 3 else ""
-                if direction == "<->":
-                    edges.append({"from": left, "to": right, "label": edge_label, "style": style})
-                    edges.append({"from": right, "to": left, "label": edge_label, "style": style})
-                elif direction == "<-":
-                    edges.append({"from": right, "to": left, "label": edge_label, "style": style})
+                if arrow == "<->":
+                    edges.append({"from": left_node, "to": right_node, "label": edge_label, "style": style})
+                    edges.append({"from": right_node, "to": left_node, "label": edge_label, "style": style})
+                elif arrow == "<-":
+                    edges.append({"from": right_node, "to": left_node, "label": edge_label, "style": style})
                 else:
-                    edges.append({"from": left, "to": right, "label": edge_label, "style": style})
+                    edges.append({"from": left_node, "to": right_node, "label": edge_label, "style": style})
             last_edge_idx = len(edges) - 1
             if "{" in stripped and "}" not in stripped:
                 in_edge_block = True
@@ -186,6 +192,7 @@ def parse_d2(path):
         edge["is_back_edge"] = src_idx > tgt_idx if src_idx >= 0 and tgt_idx >= 0 else False
 
     return {
+        "direction": direction,
         "nodes": list(nodes.values()),
         "edges": edges,
         "containers": list(containers.values()),

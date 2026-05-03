@@ -55,6 +55,22 @@ def validate(plan):
                     f"{b['id']} ({b['x']},{b['y']} {b['w']}x{b['h']})"
                 )
 
+    # Check aspect ratio vs target
+    direction = plan.get("direction", "right")
+    topology = plan.get("topology", {})
+    target_ratio = topology.get("suggested_aspect_ratio", 2.5)
+    cw, ch = canvas.get("width", 1), canvas.get("height", 1)
+    if direction in ("right", "left"):
+        actual_ratio = cw / max(ch, 1)
+    else:
+        actual_ratio = ch / max(cw, 1)
+    if actual_ratio > target_ratio * 1.5:
+        warnings.append(
+            f"Aspect ratio {actual_ratio:.1f}:1 exceeds target "
+            f"{target_ratio:.1f}:1 by >50% — consider wrapping "
+            f"{'column-first (down then right)' if direction in ('right', 'left') else 'row-first (right then down)'}"
+        )
+
     # Check canvas bounds
     for box in boxes:
         if box["x"] < 0 or box["y"] < 0:

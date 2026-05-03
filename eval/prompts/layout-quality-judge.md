@@ -33,11 +33,11 @@ Score each criterion 1-5:
    - 2: Many labels clipped, flow direction unclear
    - 1: Text too small, clipped, or overlapped to read
 
-4. **ASPECT RATIO (1-5)**:
-   - 5: Fits comfortably, good use of space, multi-row if needed
+4. **ASPECT RATIO (1-5)**: For `direction: right` diagrams, a roughly 2:1 to 3:1 width:height ratio is ideal. A single long horizontal strip (>4:1) should have been wrapped into vertical columns. For `direction: down`, the reverse — roughly 1:2 to 1:3 height:width.
+   - 5: Fits comfortably, good use of space, wrapped into columns/rows if needed
    - 4: Slightly wide or tall but manageable
    - 3: Requires scrolling, or large empty areas
-   - 2: Extremely wide strip or very cramped
+   - 2: Extremely wide strip or very cramped — wrapping was needed but not applied
    - 1: Unusable aspect ratio
 
 5. **VISUAL HIERARCHY (1-5)**:
