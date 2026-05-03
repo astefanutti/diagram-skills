@@ -122,6 +122,8 @@ Look for:
 
 **Rule**: if a step produces a named artifact that the next step consumes, label the edge with that artifact name. If the relationship is just "A then B" with no specific data handoff, leave the edge unlabeled.
 
+**Most skills have data-flow labels** — look harder if you find none. Common artifacts that flow between steps: config files (`eval.yaml`, `settings.json`), output files (`summary.yaml`, `report.html`, `collection.json`), data structures (`run_result.json`, `graph-spec.json`), and log files (`stdout.log`). The edge_quality judge checks for at least one data-flow label with a file extension in diagrams with ≥8 edges.
+
 ### 9. Upstream and Downstream Skills
 
 Always check if the skill invokes other skills via the Skill tool (look for `Skill tool`, `invoke /skill-name`, or `Use the Skill tool`). Show these as:

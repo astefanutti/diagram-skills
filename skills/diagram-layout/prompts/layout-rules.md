@@ -35,6 +35,8 @@ Example from eval-dataset: Assess Current State fans out to Bootstrap (top, defa
 
 For fan-in (multiple nodes converging to one), position the fan-in target centered vertically relative to its predecessors' y-range.
 
+**Beyond fan-out**: also stack nodes vertically when they share the same semantic column even if they're not strict alternatives. If two nodes are both "core processing" (column 3), stack them rather than placing them in separate columns. This compresses width and improves aspect ratio — the primary mechanism for avoiding overly wide diagrams.
+
 ## Rule 3: Back-Edge Exterior Routing
 
 Back-edges (loops, feedback) MUST route around nodes, never through them:
