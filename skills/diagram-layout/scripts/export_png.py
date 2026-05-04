@@ -2,8 +2,10 @@
 """Export a drawio file to PNG/SVG/PDF via draw.io CLI."""
 
 import platform
+import re
 import subprocess
 import sys
+from pathlib import Path
 
 
 def get_drawio_cli():
@@ -44,6 +46,15 @@ def main():
             capture_output=True,
             text=True,
         )
+        if fmt == "svg":
+            # draw.io re-embeds raw Unicode in SVG content attributes even
+            # when the drawio source uses entities. Replace non-ASCII with
+            # numeric XML entities so SVGs survive draw.io web editor round-trips.
+            p = Path(output_path)
+            content = p.read_text(encoding="utf-8")
+            sanitized = re.sub(r'[^\x00-\x7F]', lambda m: f'&#{ord(m.group(0))};', content)
+            if sanitized != content:
+                p.write_text(sanitized, encoding="utf-8")
         print(f"Exported {output_path}", file=sys.stderr)
     except FileNotFoundError:
         print(f"draw.io CLI not found at {cli}. "
