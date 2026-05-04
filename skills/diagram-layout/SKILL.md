@@ -206,7 +206,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/render_drawio.py <layout-plan.json> <output.
 If `--format` was specified, export to the requested format:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/export_png.py <output.drawio> <output.drawio.png>
+python3 ${CLAUDE_SKILL_DIR}/scripts/export_diagram.py <output.drawio> <output.drawio.png>
 ```
 
 ### Step 6: Visual Validation
