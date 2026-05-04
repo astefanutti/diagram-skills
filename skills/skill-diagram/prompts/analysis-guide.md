@@ -122,6 +122,8 @@ Look for:
 
 **Rule**: if a step produces a named artifact that the next step consumes, label the edge with that artifact name. If the relationship is just "A then B" with no specific data handoff, leave the edge unlabeled.
 
+**Fan-out deduplication**: when one step fans out to N downstream steps and the same artifact flows to all of them (e.g., eval-run produces summary.yaml consumed by mlflow, review, and optimize), do NOT repeat the artifact name on every fan-out edge. Instead, attach the artifact as a callout box to the source node, and leave the fan-out edges unlabeled or labeled with the specific action each target takes. Repeated identical labels on fan-out edges create visual clutter and waste space.
+
 **Most skills have data-flow labels** — look harder if you find none. Common artifacts that flow between steps: config files (`eval.yaml`, `settings.json`), output files (`summary.yaml`, `report.html`, `collection.json`), data structures (`run_result.json`, `graph-spec.json`), and log files (`stdout.log`). The edge_quality judge checks for at least one data-flow label with a file extension in diagrams with ≥8 edges.
 
 ### 9. Upstream and Downstream Skills

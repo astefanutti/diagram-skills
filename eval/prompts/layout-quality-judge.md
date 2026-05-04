@@ -33,14 +33,21 @@ Score each criterion 1-5:
    - 2: Many labels clipped, flow direction unclear
    - 1: Text too small, clipped, or overlapped to read
 
-4. **ASPECT RATIO (1-5)**: For `direction: right` diagrams, a roughly 2:1 to 3:1 width:height ratio is ideal. A single long horizontal strip (>4:1) should have been wrapped into **vertical columns** (column-first: nodes flow top-to-bottom within each column, columns placed left-to-right). This is NOT row wrapping — do NOT suggest "wrapping into rows". For `direction: down`, the reverse — wrap into horizontal rows.
-   - 5: Fits comfortably, good use of space, wrapped into vertical columns if needed
-   - 4: Slightly wide or tall but manageable
-   - 3: Requires scrolling, or large empty areas
-   - 2: Extremely wide strip or very cramped — column wrapping was needed but not applied. This is a significant defect.
-   - 1: Unusable aspect ratio
+4. **ASPECT RATIO & COMPACTNESS (1-5)**: For `direction: right` diagrams, a roughly 2:1 to 3:1 width:height ratio is ideal. But ratio alone isn't enough — a 2000px-wide diagram at 2.7:1 is still too wide to scan comfortably. Complex diagrams (12+ nodes, containers) should use multi-row wrapping to stay under ~1400px wide. Judge both the ratio AND the absolute canvas width relative to the diagram's complexity.
+   - 5: Compact, fits comfortably, wrapping used when beneficial
+   - 4: Slightly wide but manageable, <1600px for complex diagrams
+   - 3: Wide (>1600px) or requires scrolling, wrapping would help but wasn't applied
+   - 2: Very wide (>1800px) or extremely cramped — wrapping was clearly needed but not applied
+   - 1: Unusable — >2000px wide single strip or severe cramping
 
-5. **VISUAL HIERARCHY (1-5)**:
+5. **GRID ALIGNMENT (1-5)**: Nodes in a well-laid-out diagram follow a clean grid — nodes at the same pipeline stage share the same x-coordinate, nodes in the same row share the same y-coordinate. A "diagonal flow" where each successive node drifts lower-right (or upper-right) instead of following clean horizontal/vertical lines is a significant layout defect.
+   - 5: All nodes snap to a clear grid; rows and columns are perfectly aligned
+   - 4: Minor alignment drift on 1-2 nodes
+   - 3: Noticeable diagonal drift — the flow goes downhill/uphill rather than straight across
+   - 2: Most nodes are misaligned; no clear rows or columns
+   - 1: No discernible grid structure
+
+6. **VISUAL HIERARCHY (1-5)**:
    - 5: Entry stands out, containers group subsystems, externals distinct
    - 4: Most hierarchy cues present
    - 3: Some hierarchy but uniform styling
@@ -57,4 +64,4 @@ Return a JSON object:
 }
 ```
 
-Weighted average: Edge routing 30%, Node separation 25%, Readability 20%, Aspect ratio 15%, Visual hierarchy 10%.
+Weighted average: Edge routing 25%, Node separation 20%, Readability 15%, Aspect ratio 15%, Grid alignment 15%, Visual hierarchy 10%.

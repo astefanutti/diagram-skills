@@ -22,7 +22,12 @@ You will receive the generated diagram as a PNG image and the gold-standard diag
 
 4. **VISUAL HIERARCHY (1-5)**: Can you tell at a glance what the important phases are? Does the entry node stand out? Are external services visually distinct (dashed borders)? Is the layout scannable?
 
-5. **LAYOUT STRUCTURE (1-5)**: Is the aspect ratio reasonable? Does the flow read naturally? Multi-row wrapping used appropriately for complex pipelines?
+5. **LAYOUT STRUCTURE (1-5)**: Compare the spatial organization of the generated diagram against the gold standard. Key questions: does the gold standard use multi-row wrapping? If so, does the generated diagram also wrap, or does it stretch into a wide single row? Does the gold standard use a compact layout? If so, is the generated diagram similarly compact or much wider? A generated diagram that loses the gold standard's multi-row structure and becomes a wide horizontal strip is a significant defect — score 2 or lower.
+   - 5: Same spatial organization as the gold standard (same number of rows, similar compactness)
+   - 4: Minor differences in spatial organization but similar overall structure
+   - 3: Different spatial organization but still readable
+   - 2: Lost the gold standard's wrapping/compactness — much wider or more spread out
+   - 1: Completely different spatial organization, hard to follow
 
 ## Scoring
 
@@ -34,6 +39,6 @@ Return a JSON object:
 }
 ```
 
-Weighted average: Node coverage 30%, Container grouping 25%, Edge routing 20%, Visual hierarchy 15%, Layout structure 10%.
+Weighted average: Node coverage 25%, Container grouping 20%, Edge routing 20%, Visual hierarchy 15%, Layout structure 20%.
 
 If no gold standard is available (annotations show `gold_diagram: null`), score based on absolute quality only — assess the generated diagram on its own merit. Use 3 as baseline for a structurally correct but uncompared diagram.
