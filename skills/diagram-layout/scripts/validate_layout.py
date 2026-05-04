@@ -278,13 +278,11 @@ def validate(plan):
                 )
                 break
 
-    # Check for excessive bends (suboptimal exit/entry side)
+    # Check for non-orthogonal segments and excessive bends
     for elem in elements:
         if elem.get("type") != "edge":
             continue
         wps = elem.get("waypoints") or []
-        if not wps:
-            continue
         ep = elem.get("exit_point")
         np_ = elem.get("entry_point")
         src = node_geom.get(elem["from"])
@@ -306,11 +304,11 @@ def validate(plan):
 
         diagonal_segs = _count_bends(pts)
         if diagonal_segs > 0:
-            warnings.append(
-                f"Avoidable bend: {elem['from']}->{elem['to']} has "
-                f"{diagonal_segs} non-axis-aligned segment(s). "
-                f"Choose an exit/entry side that faces the target "
-                f"to eliminate unnecessary turns."
+            errors.append(
+                f"Non-orthogonal edge: {elem['from']}->{elem['to']} has "
+                f"{diagonal_segs} diagonal segment(s). "
+                f"Add waypoints so every segment is perfectly horizontal "
+                f"or vertical."
             )
 
     return {"errors": errors, "warnings": warnings}
