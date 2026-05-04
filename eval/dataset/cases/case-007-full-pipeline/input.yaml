@@ -6,4 +6,4 @@ skill_args: >-
   --skill eval/agent-eval-harness/skills/eval-mlflow
   --skill eval/agent-eval-harness/skills/eval-review
   --skill eval/agent-eval-harness/skills/eval-optimize
-output_path: eval-pipeline-flow.d2
+output_path: artifacts/eval-pipeline-flow.d2

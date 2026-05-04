@@ -1,2 +1,2 @@
 skill_args: "--skill eval/agent-eval-harness/skills/eval-analyze"
-output_path: eval-analyze-flow.d2
+output_path: artifacts/eval-analyze-flow.d2
