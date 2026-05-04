@@ -32,17 +32,29 @@ def _escape_for_xml_attr(html_label: str) -> str:
     return protected
 
 
+_RESERVED_IDS = {"filter", "push", "output", "style", "parent", "source", "target", "value", "edge", "vertex"}
+
+
+def _safe_id(cid, id_map):
+    """Rename reserved draw.io cell IDs to avoid silent export failures."""
+    if cid in _RESERVED_IDS:
+        safe = f"{cid}-node"
+        id_map[cid] = safe
+        return safe
+    return id_map.get(cid, cid)
+
+
 def render(plan):
     """Generate drawio XML from a layout plan."""
     cells = []
     cell_id = 2
+    id_map = {}  # original → safe ID mapping for reserved IDs
 
     for elem in plan.get("elements", []):
         etype = elem.get("type", "node")
 
         if etype == "container":
-            # Container cell
-            cid = elem.get("id", str(cell_id))
+            cid = _safe_id(elem.get("id", str(cell_id)), id_map)
             cells.append(_vertex(
                 cid, elem.get("label_html", ""),
                 elem["x"], elem["y"], elem["width"], elem["height"],
@@ -51,9 +63,8 @@ def render(plan):
             ))
             cell_id = max(cell_id, int(cid) + 1) if cid.isdigit() else cell_id + 1
 
-            # Container children
             for child in elem.get("children", []):
-                child_id = child.get("id", str(cell_id))
+                child_id = _safe_id(child.get("id", str(cell_id)), id_map)
                 cells.append(_vertex(
                     child_id, child.get("label_html", ""),
                     child["rel_x"], child["rel_y"],
@@ -64,7 +75,7 @@ def render(plan):
                 cell_id = max(cell_id, int(child_id) + 1) if child_id.isdigit() else cell_id + 1
 
         elif etype == "node":
-            nid = elem.get("id", str(cell_id))
+            nid = _safe_id(elem.get("id", str(cell_id)), id_map)
             cells.append(_vertex(
                 nid, elem.get("label_html", ""),
                 elem["x"], elem["y"], elem["width"], elem["height"],
@@ -74,10 +85,11 @@ def render(plan):
             cell_id = max(cell_id, int(nid) + 1) if nid.isdigit() else cell_id + 1
 
         elif etype == "edge":
-            eid = elem.get("id", str(cell_id))
+            eid = _safe_id(elem.get("id", str(cell_id)), id_map)
+            src = id_map.get(elem["from"], elem["from"])
+            tgt = id_map.get(elem["to"], elem["to"])
             cells.append(_edge(
-                eid,
-                elem["from"], elem["to"],
+                eid, src, tgt,
                 elem.get("label", ""),
                 elem.get("style", _default_edge_style()),
                 elem.get("waypoints"),
