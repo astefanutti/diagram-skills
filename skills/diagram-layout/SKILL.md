@@ -63,34 +63,60 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/graph_analysis.py artifacts/graph-spec.json 
 
 This uses networkx to compute topological layers, fan-out/fan-in points, back-edges, and classify the topology as `pipeline`, `diamond`, `hub-spoke`, or `complex`. It enriches the graph spec with topology annotations in place.
 
-### Step 3: Generate Layout Plan (two passes)
+### Step 3: Generate Layout Plan (three passes)
 
-Read the layout rules and coordinate system:
-- `${CLAUDE_SKILL_DIR}/prompts/layout-rules.md` — the layout patterns
-- `${CLAUDE_SKILL_DIR}/prompts/coordinate-system.md` — sizing tables and spacing
+Split the layout into **three passes** to keep each thinking step focused and fast. Each pass reads only the references it needs.
 
-Split the layout into two passes to keep each thinking step focused and fast.
+#### Step 3a: Assign grid positions
 
-#### Step 3a: Place nodes and containers
+Read `${CLAUDE_SKILL_DIR}/prompts/layout-rules.md` (Rules 1-2 and 6a only — column assignment, vertical stacking, aspect ratio).
 
-Generate the layout plan with **only nodes, containers, and canvas** — no edges yet. For each node: assign x, y, width, height based on semantic column, variable sizing, and multi-row wrapping. Use the text width estimation formulas in coordinate-system.md to size each node based on its actual label content — don't guess sizes from the sizing table alone. For containers: size and position around their children.
+For each node, assign a **column** (semantic role) and **row** (vertical position within that column). Output a simple grid assignment — no pixel coordinates yet.
 
-Apply these patterns:
-1. Assign nodes to semantic columns based on role
-2. Stack fan-out alternatives vertically (orthogonal to the flow direction)
-3. Check aspect ratio against the topology target (Rule 6a). If too elongated, first maximize fan-out stacking and container grouping — these are the primary mechanisms. Only use row wrapping as a fallback for the widest pipeline segment.
-4. Size and position containers around their children (children must fit with 10px padding)
-5. Position callout boxes in whitespace areas
-6. Set canvas dimensions to fit the layout
+1. Classify each node as **pipeline** (entry, processing, decision, output) or **free-floating** (external services, callouts, annotations)
+2. Assign pipeline nodes to semantic columns based on role (Rule 1)
+3. Within each column, stack fan-out alternatives vertically (Rule 2)
+4. Check aspect ratio: if all pipeline nodes are in a single row and there are 8+ nodes, apply strip detection (Rule 6a) — stack same-column nodes or wrap the widest segment
+5. Note where free-floating nodes should go (exterior, near their connections) — exact position deferred to Step 3b
 
-Write the node-only layout plan to `artifacts/layout-plan.json`. The `elements` array after Step 3a contains only nodes, containers, and callouts — no edge elements. Step 3b appends edges.
+Write the grid assignment to `artifacts/grid-assignment.json`:
+```json
+{
+  "columns": [
+    {"col": 0, "nodes": ["entry"]},
+    {"col": 1, "nodes": ["find-skill", "load-config"]},
+    {"col": 2, "nodes": ["check", "assess"]},
+    {"col": 3, "nodes": ["analyze", "explore"]}
+  ],
+  "free_floating": ["mlflow-server", "eval-setup", "callout-1"],
+  "topology": "diamond",
+  "num_rows": 2,
+  "wrap_at_col": null
+}
+```
 
-#### Step 3b: Route edges
+#### Step 3b: Compute pixel coordinates
 
-Read `artifacts/layout-plan.json` back. Now add all edges with explicit waypoints, exit/entry points, labels, and styles. For each edge:
+Read `${CLAUDE_SKILL_DIR}/prompts/coordinate-system.md` (sizing tables and spacing) and `artifacts/grid-assignment.json`.
+
+Convert the grid assignment into pixel coordinates. For each node: compute x, y, width, height based on column position, sizing tier, and text content. Use the text width estimation formulas in coordinate-system.md to size each node based on its actual label content.
+
+1. Compute column x-positions from column spacing and node widths
+2. Compute row y-positions within each column
+3. Size and position containers around their children (10px padding minimum)
+4. Position free-floating nodes in whitespace areas where their edges won't cross the pipeline flow (Rule 1 — free-floating nodes)
+5. Set canvas dimensions to fit the layout
+
+Write the node-only layout plan to `artifacts/layout-plan.json`. The `elements` array after Step 3b contains only nodes, containers, and callouts — no edge elements. Step 3c appends edges.
+
+#### Step 3c: Route edges
+
+Read `artifacts/layout-plan.json` and `${CLAUDE_SKILL_DIR}/prompts/layout-rules.md` (Rules 3, 7, 8 — back-edges, labels, edge quality).
+
+Add all edges with explicit waypoints, exit/entry points, labels, and styles. For each edge:
 1. Choose exit/entry sides that face the target (Rule 8c — minimize bends)
 2. Route back-edges compactly (Rule 3) — short loops route above, long ones below. Keep loops tight to the involved nodes.
-3. Compute waypoints for edges that need non-trivial routing
+3. Compute waypoints for edges that need non-trivial routing. Every segment must be perfectly horizontal or vertical — include corner waypoints for every turn (Rule 8b).
 4. Add labels at midpoints along the **longest segment** of each edge, offset perpendicular. Verify no label overlaps any node bounding box — the validator checks this.
 5. Verify zero edge crossings (Rule 8d)
 
@@ -149,7 +175,7 @@ The validator checks: node overlaps, edge-through-node (errors), edge-edge cross
 
 **All edges MUST use orthogonal routing** — every segment is either perfectly horizontal or perfectly vertical. A tangent (diagonal) segment connecting to a node is a critical defect. If an edge arrives at a node at an angle, fix the exit/entry anchor points so the connection is orthogonal. This is enforced by `edgeStyle=orthogonalEdgeStyle` in the drawio style, but the layout plan coordinates must also be consistent — waypoints must share an x or y coordinate with adjacent waypoints.
 
-**If errors or warnings**: read the validator output, apply the corresponding fix from layout-rules.md, update the layout JSON, and re-run the validator. Repeat until clean or up to **5 iterations**. If still not clean after 5 iterations, proceed to rendering — some layouts oscillate between fixes, and the visual sub-agent can assess the remaining issues in context.
+**If errors or warnings**: read the validator output, apply the corresponding fix from layout-rules.md, update the layout JSON, and re-run the validator. Repeat until clean or up to **5 iterations**.
 
 Fix rules by priority:
 1. **Edge through node** (error) → reroute waypoints to the far exterior, enter target from the side. See Rule 8a
@@ -157,6 +183,15 @@ Fix rules by priority:
 3. **Near-miss** (warning) → nudge the nearby node away (prefer moving nodes over edges). See Rule 8e. Re-check connected edges for new S-bends (Rule 8f cascading)
 4. **Avoidable bend** (warning) → change exit/entry side to face the target. See Rule 8c
 5. **Canvas overflow** → expand canvas or compress column spacing
+
+**Graceful degradation — drop secondary nodes when routing can't converge.** If after 3 iterations the validator still reports edge-through-node errors or 5+ edge crossings, the layout is too dense for clean routing. Instead of continuing to shuffle waypoints, simplify the graph:
+
+1. Identify the lowest-priority nodes: external/optional nodes with dashed borders (downstream "suggested" skills, external services that aren't central to the flow). These are the nodes whose `style` contains `stroke-dash` or whose `role` in the graph spec is `external` or `optional`.
+2. Remove those nodes and all their connected edges from the layout plan.
+3. Re-run the validator on the simplified layout. The removed edges were likely causing the crossings.
+4. Continue iterating on the simplified layout for the remaining 2 iterations.
+
+A clean diagram with fewer nodes is always better than a complete diagram with edges crossing through nodes. The dropped nodes are still in the D2 source — readers can see them there. The layout's job is visual clarity, not completeness.
 
 **Do NOT render to drawio/PNG until the validator reports zero errors and zero warnings.** The validator is fast (milliseconds); rendering + visual inspection is slow (seconds + sub-agent). Use the validator as the tight inner loop.
 
