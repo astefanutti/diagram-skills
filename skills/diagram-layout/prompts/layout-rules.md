@@ -22,6 +22,15 @@ Column x-positions: `col_x = margin_left + col_index * column_spacing`, where co
 
 When a node's role is ambiguous, consider: what does it PRODUCE? Nodes producing intermediate artifacts go in processing columns. Nodes producing final outputs go in output columns.
 
+**Free-floating nodes** — external services, callouts, and file annotations do NOT participate in the pipeline flow. They have no sequence constraints (no "must come after step X"). This means they are NOT bound to column assignment — position them wherever minimizes edge crossings and maximizes routing clarity. Treat their placement as a routing optimization problem, not a semantic column decision.
+
+Examples of free-floating nodes: MLflow Server, API gateways, databases, file-tree callouts, config-snippet callouts, schema annotations. These nodes connect to pipeline steps but are not steps themselves.
+
+**Placement strategy**: after placing all pipeline nodes (steps 1-2), position free-floating nodes in the remaining whitespace. For each free-floating node, consider all candidate positions (above, below, left margin, right margin) and pick the one where its edges don't cross any existing edges or pass through any pipeline nodes. Common good positions:
+- A service connected to many nodes on the right side → place it far right, vertically centered among its connections
+- A callout connected to one node → place it directly below or beside that node, in nearby whitespace
+- A service connected to nodes across the full width → place it above or below the entire flow, not in the middle
+
 ## Rule 2: Vertical Stacking of Alternatives
 
 When a node fans out to N successor alternatives (same semantic role):
@@ -62,7 +71,7 @@ For **long back-edges** spanning many columns, use bottom routing:
 route_y = max(source_bottom, target_bottom) + 40
 ```
 
-The key principle: route_y should be relative to the **involved nodes**, not the entire diagram. A validation retry loop between two adjacent nodes should be a tight arc, not a wide sweep across the full canvas.
+The key principle: route_y should be relative to the **involved nodes**, not the entire diagram. A validation retry loop between two adjacent nodes should be a tight arc, not a wide sweep across the full canvas. Specifically: `route_y` should be at most 60px beyond the involved nodes' bounding box. A back-edge that routes 200+ pixels away from its source and target is a "wide open loop" defect — it wastes space and makes the edge hard to follow.
 
 For multiple back-edges, stagger the route_y values (each 25px lower) to prevent overlapping routes.
 
@@ -128,7 +137,7 @@ After initial placement, check the aspect ratio against the target for the topol
 
 **Strategy 4 — Row wrapping (fallback only).** If strategies 1-3 still leave the aspect ratio >50% above target, break the pipeline into rows. Each row flows left-to-right. Rows are stacked top-to-bottom with vertical transition edges. Wrap incrementally — identify the widest pipeline segment, wrap only that segment into a new row, then re-check. Don't wrap the entire diagram at once.
 
-**When NOT to wrap**: most diagrams with ≤12 nodes don't need wrapping. The gold standard eval-analyze (12 nodes, ~1600px wide) uses no wrapping — fan-out stacking alone keeps the ratio at 2.7:1.
+**Strip layout detection**: after initial placement, check if all forward-flow nodes share roughly the same y-row (y values within 50px). This is a "strip layout" — a long horizontal band that's hard to read. A strip with 8+ nodes always needs correction. Apply strategies 1-3 first (stacking and containers usually suffice), then strategy 4 if still needed. The goal is that the layout uses at least 2-3 distinct y-levels for forward-flow nodes.
 
 **Bidirectional subsystems**: when a step has a bidirectional relationship with a subsystem (e.g., execute ↔ tool interception), place the subsystem on the orthogonal axis (below for `direction: right`, to the right for `direction: down`).
 
@@ -192,7 +201,11 @@ Edges must NEVER pass through the bounding box of any node they are not connecte
 
 **Verification**: for every edge with waypoints, check that no waypoint segment intersects any non-connected node's bounding box. The `validate_layout.py` script checks this programmatically.
 
-### 8b. S-bend Elimination
+### 8b. Orthogonal Connection and S-bend Elimination
+
+**Every edge segment must be perfectly horizontal or vertical** — no diagonal segments. The last waypoint before a target node must share either the same x (for top/bottom entry) or same y (for left/right entry) as the entry anchor point. If the last waypoint is at (1050, 588) and the entry point is the left side at (1050, 707), the edge needs a horizontal segment from (1050, 588) to (1050, 588) then vertical to (1050, 707) — but drawio may render this as a diagonal if the waypoints don't include the corner. **Always include the corner waypoint** so every turn is an explicit right angle.
+
+**Common defect**: fan-out edges that exit the source at different y-positions and enter targets at `entry={x:0, y:0.5}` (left side). The last waypoint's y rarely matches the target's left-center y. Fix: add a final waypoint at `(target_x, target_center_y)` so the last segment is a straight horizontal line into the left side.
 
 S-bends are small S-shaped wiggles when source and target anchor points are nearly but not exactly aligned. Fix by adjusting anchor point fractions so connection points align exactly, or nudge the node by a few pixels.
 
@@ -247,6 +260,8 @@ Edge crossings are a critical defect — second only to edges passing through no
 3. **Enter from the source side** (Rule 9a): right-side entry keeps back-edges entirely in the exterior corridor, away from all forward-flow edges.
 4. **Stagger parallel back-edges**: when multiple back-edges share the exterior route, stagger their y positions (top-routing) or x positions (bottom-routing) by 15px.
 5. **Reorder nodes vertically**: if two forward edges cross, swap the vertical positions of the target nodes to uncross them. This is always preferable to complex waypoint routing.
+
+**Hub-spoke fan-out**: when one node (e.g., "config") fans out to 3+ targets stacked vertically, and those targets also connect to a shared service node, the service-bound edges will cross the fan-out edges unless you: (1) place the service node on the exterior (Rule 1 — shared service nodes), (2) route service edges through the exterior corridor (top or bottom), and (3) stagger the exit points on the fan-out source so inner targets use inner exit points and outer targets use outer exit points (Rule 8c nested ordering).
 
 **Verification**: after laying out all edges, check every pair of edge segments for intersections. If any crossing exists, resolve it before proceeding to rendering. The `validate_layout.py` script flags crossings as errors.
 
