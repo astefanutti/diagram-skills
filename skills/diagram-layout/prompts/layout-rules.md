@@ -119,6 +119,20 @@ Supplementary information goes in callout boxes connected with dashed edges:
 - **Sizing**: fit content with 10px internal padding
 - **Rule**: callouts must NOT overlap main flow nodes or edges. Place them in dead zones — areas with no forward edges passing through
 
+## Rule 5b: Shared Fan-in Target Placement (hub-spoke)
+
+When several parallel operations each feed the **same** downstream target(s) — a "fan-in" — place those shared targets **adjacent to the operations column**, vertically centered on the operations they receive from. Do NOT push them to the canvas extremes.
+
+This pattern is common in hub-spoke diagrams: a config/dispatch node fans out to N operations, and those N operations all converge on one or two shared targets (e.g., a Report node and an external Server). The failure mode is placing the shared target in the far "output" column (Rule 1 column 5/6) when there is nothing between it and the operations — this creates a wide empty band and N long parallel edges crossing it.
+
+Rules:
+1. **Distance**: a shared fan-in target sits one column-gap (40-60px) to the right of the **widest** operation in the column, not at the canvas edge. If the operations column's right edge is at x=R, the target's left edge is at ~R+50, regardless of where other "output" nodes sit.
+2. **Vertical centering**: center the target on the y-midpoint of the operations that feed it, so the convergence edges are short and symmetric rather than long diagonals-turned-L-bends.
+3. **Two shared targets** (e.g., Report on the right, Server below): place one to the right of the operations (vertically centered) and the other directly below the operations (horizontally centered), each hugging the column. Avoid putting one at the far right AND one at the far bottom — that maximizes edge length and whitespace.
+4. **Downstream of the target**: if the shared target has its own downstream nodes (e.g., Report → review/optimize), place those immediately beyond the target in the same direction, so the target + its satellites form one compact cluster — never leave the target stranded far from its sources to make room for its satellites.
+
+The test: if you can draw a large empty rectangle (no nodes, only edges) between a fan-out column and its shared fan-in target, the target is too far away — pull it in.
+
 ## Rule 6: Aspect Ratio and Canvas Sizing
 
 Choose canvas dimensions based on the graph topology:
