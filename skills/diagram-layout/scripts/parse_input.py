@@ -27,6 +27,8 @@ def parse_d2(path):
     current_block_id = None
     block_depth = 0
     in_edge_block = False
+    in_md_block = False
+    md_node_id = None
     last_edge_idx = -1
 
     for line in lines:
@@ -42,6 +44,34 @@ def parse_d2(path):
                     edges[last_edge_idx]["style"] = "dashed"
             if "}" in stripped:
                 in_edge_block = False
+            continue
+
+        # Inside a markdown (|md) content block — consume content only.
+        # Never run node/edge matching on these lines: doing so is what
+        # shattered callout blocks into phantom nodes (e.g. `judges: {…}`)
+        # and turned `->` appearing in prose into spurious edges.
+        if in_md_block:
+            if stripped.startswith("|"):
+                # closing pipe ends the markdown content.
+                in_md_block = False
+                if "{" not in stripped:
+                    # Bare `|` (no trailing `{ … }` style block): there is no
+                    # matching `}` to balance the depth increment from opening
+                    # this node, so undo it here. Otherwise an open container
+                    # would keep "swallowing" every following node as a child.
+                    block_depth -= 1
+                    if block_depth <= 0:
+                        current_block_id = None
+                        block_depth = 0
+                continue
+            if stripped.startswith("**"):
+                title = stripped.strip("*").strip()
+                if md_node_id in nodes:
+                    nodes[md_node_id]["label"] = title
+            elif stripped.startswith("- "):
+                bullet = stripped[2:].strip()
+                if md_node_id in nodes:
+                    nodes[md_node_id]["details"].append(bullet)
             continue
 
         # Edge chain: a -> b -> c or a <-> b, with optional label/style
@@ -140,41 +170,57 @@ def parse_d2(path):
                 }
             continue
 
-        # Block with markdown content: name: |md
-        md_match = re.match(r"([\w-]+)\s*:\s*\|md\s*$", stripped)
+        # Block with markdown content: name: |md  (or |||md etc. — D2 allows
+        # any odd number of pipes so the block body can itself contain `|`).
+        md_match = re.match(r"([\w-]+)\s*:\s*\|+md\s*$", stripped)
         if md_match:
             block_id = md_match.group(1)
-            if current_block_id:
+            if current_block_id and current_block_id != block_id and block_depth >= 1:
+                # markdown node nested inside an open container — register it
+                # as a child (this was previously dropped, flattening the
+                # container).
+                if current_block_id not in containers:
+                    containers[current_block_id] = {
+                        "id": current_block_id,
+                        "label": nodes.get(current_block_id, {}).get(
+                            "label", current_block_id
+                        ),
+                        "children": [],
+                    }
+                if block_id not in containers[current_block_id]["children"]:
+                    containers[current_block_id]["children"].append(block_id)
+                nodes[block_id] = {
+                    "id": block_id,
+                    "label": block_id,
+                    "details": [],
+                    "role": "processing",
+                }
                 block_depth += 1
             else:
                 current_block_id = block_id
                 block_depth = 1
-            nodes[block_id] = {
-                "id": block_id,
-                "label": block_id,
-                "details": [],
-                "role": _guess_role(block_id, ""),
-            }
+                nodes[block_id] = {
+                    "id": block_id,
+                    "label": block_id,
+                    "details": [],
+                    "role": _guess_role(block_id, ""),
+                }
+            # Markdown content (and the node's title/bullets) belongs to this
+            # node, not the enclosing container.
+            in_md_block = True
+            md_node_id = block_id
             continue
 
-        # Markdown content lines (inside |md block)
-        if current_block_id and block_depth >= 1:
-            if stripped == "|" or stripped == "| {":
-                continue
-            if stripped == "}":
-                block_depth -= 1
-                if block_depth <= 0:
-                    current_block_id = None
-                    block_depth = 0
-                continue
-            if stripped.startswith("**"):
-                title = stripped.strip("*").strip()
-                if current_block_id in nodes:
-                    nodes[current_block_id]["label"] = title
-            elif stripped.startswith("- "):
-                bullet = stripped[2:].strip()
-                if current_block_id in nodes:
-                    nodes[current_block_id]["details"].append(bullet)
+        # Closing brace ends the current style / container block.
+        if stripped == "}":
+            block_depth -= 1
+            if block_depth <= 0:
+                current_block_id = None
+                block_depth = 0
+            continue
+        # Any other line inside a block (style props, stray markup) is
+        # ignored — only the declarations matched above contribute
+        # nodes/edges/containers.
 
     # Mark back-edges
     node_order = list(nodes.keys())
@@ -283,8 +329,9 @@ def _guess_role(node_id, label):
         return "output"
     if any(w in combined for w in ["check", "validate", "assess", "decision"]):
         return "decision"
-    if any(w in combined for w in ["find", "load", "read", "parse", "setup"]):
-        return "setup"
+    # find/load/read/parse steps are ordinary processing nodes. (Earlier this
+    # returned "setup", which is not a valid role — entry/processing/decision/
+    # output/external/optional — and forced callers to relabel every spec.)
     return "processing"
 
 
