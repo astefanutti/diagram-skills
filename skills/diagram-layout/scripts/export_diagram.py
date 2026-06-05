@@ -47,14 +47,20 @@ def main():
             text=True,
         )
         if fmt == "svg":
-            # draw.io re-embeds raw Unicode in SVG content attributes even
-            # when the drawio source uses entities. Replace non-ASCII with
-            # numeric XML entities so SVGs survive draw.io web editor round-trips.
             p = Path(output_path)
             content = p.read_text(encoding="utf-8")
-            sanitized = re.sub(r'[^\x00-\x7F]', lambda m: f'&#{ord(m.group(0))};', content)
-            if sanitized != content:
-                p.write_text(sanitized, encoding="utf-8")
+            # Strip light-dark() CSS function — keep only the light value.
+            # Safari doesn't support light-dark() in <img> SVGs, so we use
+            # fixed light colors and apply a CSS invert filter for dark mode.
+            content = re.sub(
+                r'light-dark\(([^,)]+),\s*[^)]+\)',
+                r'\1',
+                content,
+            )
+            # Replace non-ASCII with numeric XML entities so SVGs survive
+            # draw.io web editor round-trips (raw Unicode gets double-encoded).
+            content = re.sub(r'[^\x00-\x7F]', lambda m: f'&#{ord(m.group(0))};', content)
+            p.write_text(content, encoding="utf-8")
         print(f"Exported {output_path}", file=sys.stderr)
     except FileNotFoundError:
         print(f"draw.io CLI not found at {cli}. "
