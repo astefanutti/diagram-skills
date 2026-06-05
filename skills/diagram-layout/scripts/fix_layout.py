@@ -920,6 +920,88 @@ def fix_overlaps(plan, margin=10, max_iters=50):
 
 
 # ---------------------------------------------------------------------------
+# Pass 2b: Compact large empty bands
+# ---------------------------------------------------------------------------
+
+def _find_gaps(intervals, min_gap):
+    """Find empty gaps wider than min_gap between sorted 1-D intervals."""
+    if not intervals:
+        return []
+    intervals = sorted(intervals)
+    gaps = []
+    cur_end = intervals[0][1]
+    for s, e in intervals[1:]:
+        if s - cur_end > min_gap:
+            gaps.append((cur_end, s))
+        cur_end = max(cur_end, e)
+    return gaps
+
+
+def fix_compact_gaps(plan, min_gap=120, target_gap=70):
+    """Close large empty bands by sliding the far cluster inward.
+
+    When a full-height vertical band (or full-width horizontal band) contains
+    no node — only long edges spanning it — the diagram wastes space and the
+    edges are needlessly long. Everything past a cut line in the band is
+    shifted toward the rest by a uniform delta, which preserves orthogonality
+    (horizontal segments crossing the cut just shorten; vertical segments lie
+    wholly on one side) and relative order. Reverts if it worsens validation.
+    """
+    import copy
+
+    elements = plan.get("elements", [])
+    before_issues = _count_issues(plan)
+    snapshot = copy.deepcopy(plan)
+    fixes = 0
+
+    for axis in ("x", "y"):
+        dim = "width" if axis == "x" else "height"
+        # Top-level node/container intervals along this axis
+        intervals = []
+        for elem in elements:
+            if elem.get("type", "node") in ("node", "container"):
+                intervals.append((elem[axis], elem[axis] + elem[dim]))
+        gaps = _find_gaps(intervals, min_gap)
+        # Process right-to-left so earlier shifts don't move later gaps
+        for g0, g1 in sorted(gaps, reverse=True):
+            delta = (g1 - g0) - target_gap
+            if delta <= 0:
+                continue
+            cut = (g0 + g1) / 2
+            for elem in elements:
+                etype = elem.get("type", "node")
+                if etype in ("node", "container"):
+                    if elem[axis] > cut:
+                        elem[axis] -= delta
+                elif etype == "edge":
+                    for wp in (elem.get("waypoints") or []):
+                        if wp[axis] > cut:
+                            wp[axis] -= delta
+            fixes += 1
+
+    if fixes and _count_issues(plan) > before_issues:
+        # Compaction made things worse — revert
+        plan.clear()
+        plan.update(snapshot)
+        return 0
+
+    # Shrink the canvas to the compacted content
+    if fixes:
+        canvas = plan.get("canvas", {})
+        max_right = max((e["x"] + e["width"] for e in elements
+                         if e.get("type", "node") in ("node", "container")),
+                        default=canvas.get("width", 0))
+        max_bottom = max((e["y"] + e["height"] for e in elements
+                          if e.get("type", "node") in ("node", "container")),
+                         default=canvas.get("height", 0))
+        canvas["width"] = int(max_right + 60)
+        canvas["height"] = int(max_bottom + 60)
+        plan["canvas"] = canvas
+
+    return fixes
+
+
+# ---------------------------------------------------------------------------
 # Pass 3: Edge-through-node rerouting
 # ---------------------------------------------------------------------------
 
@@ -1259,8 +1341,11 @@ def _run_passes(plan, corner_anchors=True):
     summary["anchor_alignment_pass2"] = fix_anchor_alignment(plan)
     summary["orthogonal_pass2"] = fix_orthogonal(plan)
     summary["spikes_pass2"] = fix_spikes(plan)
-    # Strip redundant waypoints last — makes edges editable in draw.io
+    # Strip redundant waypoints — makes edges editable in draw.io
     summary["strip_waypoints"] = fix_strip_waypoints(plan)
+    # Compact empty bands last, when the issue count reflects the final
+    # state (its A/B guard would mis-fire mid-pipeline before cleanup).
+    summary["compact_gaps"] = fix_compact_gaps(plan)
     return summary
 
 
