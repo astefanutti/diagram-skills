@@ -137,10 +137,15 @@ def validate(plan):
         if etype in ("node", "container"):
             node_geom[elem["id"]] = elem
 
-    # Check edge-edge crossings (including implicit anchor segments)
+    # Check edge-edge crossings (including implicit anchor segments).
+    # Skip edges with no waypoints — draw.io routes them dynamically,
+    # so the exit→entry straight line doesn't represent the actual path.
     edge_segments = []
     for elem in elements:
         if elem.get("type") != "edge":
+            continue
+        wps = elem.get("waypoints") or []
+        if not wps:
             continue
         eid = f"{elem['from']}->{elem['to']}"
         all_points = []
@@ -155,7 +160,6 @@ def validate(plan):
             })
 
         # Add explicit waypoints
-        wps = elem.get("waypoints") or []
         all_points.extend(wps)
 
         # Add entry point (last waypoint → target anchor)
@@ -197,12 +201,18 @@ def validate(plan):
     clearance_margin = 15
     for eid, sx1, sy1, sx2, sy2 in edge_segments:
         src_id, _, tgt_id = eid.partition("->")
+        # Skip the parent container if both endpoints are its children
+        skip_ids = {src_id, tgt_id}
+        src_parent = container_children.get(src_id)
+        tgt_parent = container_children.get(tgt_id)
+        if src_parent and src_parent == tgt_parent:
+            skip_ids.add(src_parent)
         for box in boxes:
-            if box["id"] in (src_id, tgt_id):
+            if box["id"] in skip_ids:
                 continue
             # Skip children of containers the edge connects to
             parent_id = container_children.get(box["id"])
-            if parent_id and parent_id in (src_id, tgt_id):
+            if parent_id and parent_id in skip_ids:
                 continue
             if _segment_intersects_box(sx1, sy1, sx2, sy2, box, margin=0):
                 errors.append(
@@ -228,6 +238,8 @@ def validate(plan):
     label_padding = 4
     for elem in elements:
         if elem.get("type") != "edge":
+            continue
+        if not (elem.get("waypoints") or []):
             continue
         label = elem.get("label", "")
         if not label:
@@ -278,11 +290,16 @@ def validate(plan):
                 )
                 break
 
-    # Check for non-orthogonal segments and excessive bends
+    # Check for non-orthogonal segments and excessive bends.
+    # Skip edges with no waypoints — draw.io's orthogonalEdgeStyle router
+    # handles routing dynamically, so the exit→entry line being diagonal
+    # is expected (draw.io renders it as an L-bend).
     for elem in elements:
         if elem.get("type") != "edge":
             continue
         wps = elem.get("waypoints") or []
+        if not wps:
+            continue
         ep = elem.get("exit_point")
         np_ = elem.get("entry_point")
         src = node_geom.get(elem["from"])
