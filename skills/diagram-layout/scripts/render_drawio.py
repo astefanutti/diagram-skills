@@ -110,8 +110,31 @@ def render(plan):
     return xml
 
 
+_ABSOLUTE_ARC_RADIUS = 16  # absolute arcSize → ~8px corner radius
+
+
+def _normalize_arcsize(style):
+    """Force absolute corner radius so large boxes don't get large corners.
+
+    draw.io interprets arcSize as a percentage of the box's smaller side
+    unless absoluteArcSize=1 is set. A 520px-wide container then gets a
+    much larger corner radius than a small node. Normalizing to an
+    absolute pixel radius keeps corners consistent across all box sizes.
+    """
+    if "rounded=1" not in style:
+        return style
+    # Strip any existing arc settings
+    parts = [p for p in style.split(";")
+             if p and not p.startswith("arcSize=")
+             and not p.startswith("absoluteArcSize=")]
+    parts.append(f"arcSize={_ABSOLUTE_ARC_RADIUS}")
+    parts.append("absoluteArcSize=1")
+    return ";".join(parts) + ";"
+
+
 def _vertex(cid, label, x, y, w, h, style, parent="1"):
     label_escaped = _escape_for_xml_attr(label)
+    style = _normalize_arcsize(style)
     geom = (
         f'      <mxGeometry x="{x}" y="{y}" '
         f'width="{w}" height="{h}" as="geometry"/>\n'

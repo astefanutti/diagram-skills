@@ -57,6 +57,13 @@ Callout boxes:
 Font stack: Inter (optimized for small screen sizes) with Helvetica/Arial fallback.
 Callout boxes use JetBrains Mono for code/file tree content.
 
+**Corner radius**: `render_drawio.py` normalizes every rounded box to an
+absolute corner radius (`absoluteArcSize=1`) at render time, so the radius is
+a fixed pixel value regardless of box size. Without this, draw.io treats
+`arcSize` as a percentage of the box's smaller side, making large containers
+get disproportionately large corners. Don't rely on a specific `arcSize` in
+the styles below — it is overridden during rendering.
+
 ```
 # Standard node
 rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;strokeWidth=2;arcSize=10;verticalAlign=top;spacingTop=5;fontSize=11;fontFamily=Inter,Helvetica,Arial,sans-serif;
