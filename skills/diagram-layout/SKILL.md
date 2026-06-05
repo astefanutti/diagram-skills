@@ -122,6 +122,21 @@ Add all edges with explicit waypoints, exit/entry points, labels, and styles. Fo
 
 Append the edge elements to the layout plan and write the complete `artifacts/layout-plan.json`.
 
+#### Step 3d: Programmatic fix pass
+
+Run the post-processing fixer to mechanically correct common layout issues before validation:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/fix_layout.py artifacts/layout-plan.json
+```
+
+This applies three deterministic fix passes:
+1. **Orthogonal snapping** — inserts corner waypoints wherever consecutive edge points form a diagonal segment, producing clean L-bends
+2. **Overlap resolution** — pushes overlapping nodes apart along the axis of least overlap, expanding the canvas if needed
+3. **Edge-through-node rerouting** — inserts waypoints to route edges around obstructing nodes they pass through
+
+The fixer modifies `artifacts/layout-plan.json` in place and prints a summary of fixes applied. Run this before every `validate_layout.py` call — it catches and fixes issues that would otherwise require manual LLM iteration.
+
 The layout plan JSON format for both passes:
 
 ```json
@@ -167,15 +182,18 @@ The layout plan JSON format for both passes:
 
 **Before rendering**, iterate on the layout JSON until the validator passes clean. This catches all structural defects (crossings, S-bends, near-misses) without the cost of rendering and visual inspection.
 
+Each iteration runs the fixer then the validator:
+
 ```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/fix_layout.py artifacts/layout-plan.json
 python3 ${CLAUDE_SKILL_DIR}/scripts/validate_layout.py artifacts/layout-plan.json
 ```
 
-The validator checks: node overlaps, edge-through-node (errors), edge-edge crossings, near-miss clearance (15px minimum), avoidable bends, and canvas bounds.
+The fixer mechanically corrects orthogonal snapping, overlaps, and edge-through-node issues. The validator then checks for anything the fixer couldn't resolve: edge-edge crossings, near-miss clearance (15px minimum), avoidable bends, and canvas bounds.
 
-**All edges MUST use orthogonal routing** — every segment is either perfectly horizontal or perfectly vertical. A tangent (diagonal) segment connecting to a node is a critical defect. If an edge arrives at a node at an angle, fix the exit/entry anchor points so the connection is orthogonal. This is enforced by `edgeStyle=orthogonalEdgeStyle` in the drawio style, but the layout plan coordinates must also be consistent — waypoints must share an x or y coordinate with adjacent waypoints.
+**All edges MUST use orthogonal routing** — every segment is either perfectly horizontal or perfectly vertical. A tangent (diagonal) segment connecting to a node is a critical defect. If an edge arrives at a node at an angle, fix the exit/entry anchor points so the connection is orthogonal. This is enforced by `edgeStyle=orthogonalEdgeStyle` in the drawio style, but the layout plan coordinates must also be consistent — waypoints must share an x or y coordinate with adjacent waypoints. The fixer handles this automatically by inserting corner waypoints.
 
-**If errors or warnings**: read the validator output, apply the corresponding fix from layout-rules.md, update the layout JSON, and re-run the validator. Repeat until clean or up to **5 iterations**.
+**If errors or warnings after the fixer**: read the validator output, apply the corresponding fix from layout-rules.md, update the layout JSON, and re-run both fixer and validator. Repeat until clean or up to **5 iterations**.
 
 Fix rules by priority:
 1. **Edge through node** (error) → reroute waypoints to the far exterior, enter target from the side. See Rule 8a
@@ -224,7 +242,7 @@ For diagrams that need visual validation:
 ```
 Agent({
   description: "Validate diagram layout",
-  prompt: "Read the image at <path-to-exported-png> using the Read tool. The programmatic validator already passed — focus on VISUAL issues only: (1) labels clipped or unreadable at the rendered size, (2) edge label congestion — multiple labels overlapping in a tight area, (3) containers not visually enclosing their children (render artifacts), (4) visual hierarchy — can you tell at a glance what the important phases are? The diagram uses fan-out stacking and containers for aspect ratio control (NOT row wrapping) — do not suggest wrapping into rows unless the ratio exceeds 5:1. Report findings as a numbered list. If no issues, report 'Layout validation passed'. Do NOT output the image — text only."
+  prompt: "Read the image at <path-to-exported-png> using the Read tool. The programmatic validator and fixer already passed — focus on VISUAL issues only.\n\nCheck each category and report as JSON:\n\n| Check | What to look for |\n|-------|------------------|\n| clipped_labels | Text cut off at shape boundaries |\n| edge_label_congestion | Multiple edge labels overlapping in a tight area |\n| container_artifacts | Containers not visually enclosing their children |\n| edge_shape_overlap | An edge visually crossing through an unrelated shape (fixer may have missed edge cases) |\n| stacked_edges | Multiple edges overlapping on the same path |\n| visual_hierarchy | Can you tell at a glance what the important phases are? |\n\nThe diagram uses fan-out stacking and containers for aspect ratio control (NOT row wrapping) — do not suggest wrapping into rows unless the ratio exceeds 5:1.\n\nRespond with ONLY a JSON object:\n{\"issues\": [{\"type\": \"<category>\", \"element\": \"<node/edge id or description>\", \"fix\": \"<suggested fix>\"}], \"passed\": true/false}\n\nIf no issues, respond: {\"issues\": [], \"passed\": true}\nDo NOT output the image — JSON only."
 })
 ```
 

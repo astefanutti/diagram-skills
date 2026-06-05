@@ -75,6 +75,17 @@ The key principle: route_y should be relative to the **involved nodes**, not the
 
 For multiple back-edges, stagger the route_y values (each 25px lower) to prevent overlapping routes.
 
+**Vertically stacked nodes** — when source and target share the same x-range (same column, stacked vertically), route the back-edge on the right exterior:
+```
+exit:  (source_right, source_center_y)     exitX=1, exitY=0.5
+waypoints: [
+  (source_right + 20, source_center_y),
+  (source_right + 20, target_center_y)
+]
+entry: (target_right, target_center_y)     entryX=1, entryY=0.5
+```
+NEVER use `entryX=1, entryY=1` (bottom-right corner) for vertically stacked back-edges — this forces the edge to detour around the bottom of the target node, creating a U-shaped path that crosses under the target. Always enter from the right side at the target's vertical center.
+
 Style back-edges with: `dashed=1;dashPattern=8 4;` to visually distinguish from forward edges.
 
 ## Rule 4: Container Grouping
