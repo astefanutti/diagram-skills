@@ -11,6 +11,23 @@ def validate(plan):
     errors = []
 
     elements = plan.get("elements", [])
+
+    # Guard against malformed plans. An empty (or missing) `elements` array
+    # silently passed every check below — so a plan written in the old
+    # {"nodes": [...], "edges": [...]} schema "validated clean" and then
+    # render_drawio.py emitted an empty diagram. Fail loudly instead.
+    if not elements:
+        if plan.get("nodes") or plan.get("edges"):
+            errors.append(
+                "layout plan uses the wrong schema: expected a single "
+                "type-tagged 'elements' array (node/container/edge), but found "
+                "top-level 'nodes'/'edges'. Convert it, or render_drawio.py "
+                "will emit an empty diagram."
+            )
+        else:
+            errors.append("layout plan has no 'elements' — nothing to render.")
+        return {"errors": errors, "warnings": warnings}
+
     canvas = plan.get("canvas", {"width": 1920, "height": 1080})
 
     # Collect all node bounding boxes (including container children)

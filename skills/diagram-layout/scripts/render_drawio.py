@@ -219,6 +219,21 @@ def main():
     with open(sys.argv[1]) as f:
         plan = json.load(f)
 
+    # Refuse to write an empty diagram. Without this, a plan with an empty (or
+    # wrong-schema) "elements" array produced a .drawio containing only the two
+    # root cells — a silent failure that looked like success.
+    node_like = [e for e in plan.get("elements", [])
+                 if e.get("type", "node") in ("node", "container")]
+    if not node_like:
+        print(
+            "ERROR: layout plan has no node/container elements — refusing to "
+            "write an empty diagram. Check that the plan uses a single "
+            "'elements' array (type-tagged node/container/edge), not "
+            "top-level 'nodes'/'edges'.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     xml = render(plan)
 
     with open(sys.argv[2], "w") as f:
