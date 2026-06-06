@@ -34,6 +34,7 @@ def parse_d2(path):
     bold_acc = ""
     in_style_block = False   # inside the `| { ... }` style block after a |md
     style_target_id = None
+    last_md_bullet = False    # previous |md line was a `- bullet` (for wraps)
 
     for line in lines:
         stripped = line.strip()
@@ -90,6 +91,7 @@ def parse_d2(path):
                 # closing pipe ends the markdown content.
                 in_md_block = False
                 in_bold = False
+                last_md_bullet = False
                 if "{" in stripped:
                     # A `| { … }` style block follows — keep depth, capture it.
                     in_style_block = True
@@ -116,6 +118,7 @@ def parse_d2(path):
             # inline content don't leak into the label.
             m = re.search(r'\*\*(.+?)\*\*', stripped)
             if m:
+                last_md_bullet = False
                 if node is not None:
                     _set_md_title(node, m.group(1))
                 trailing = stripped[m.end():].strip()
@@ -123,33 +126,57 @@ def parse_d2(path):
                     node["details"].append(trailing)
             elif stripped.startswith("**"):
                 # Opening ** with no closing on this line → multi-line title.
+                last_md_bullet = False
                 in_bold = True
                 bold_acc = stripped[2:].strip()
             elif stripped.startswith("- "):
+                last_md_bullet = True
                 if node is not None:
                     node["details"].append(stripped[2:].strip())
+            elif last_md_bullet and node is not None and node["details"]:
+                # Continuation of the previous bullet wrapped onto a new line
+                # (no marker) — append to that bullet instead of dropping it.
+                node["details"][-1] += " " + stripped
             else:
                 # Plain content line — callout body (preserve it).
                 if node is not None:
                     node.setdefault("_raw", []).append(stripped)
             continue
 
-        # Edge chain: a -> b -> c or a <-> b, with optional label/style
+        # Edge chain: a -> b -> c or a <-> b. Match just the chain prefix,
+        # then parse the remainder for an optional `: label` and/or a `{ … }`
+        # style block. Handling the remainder manually (rather than baking it
+        # into the regex) lets a label-less styled connector like
+        # `gen -> callout {` parse — the old regex required `: label` or
+        # end-of-line after the chain, so a bare trailing `{` dropped the edge.
+        # Node ids may be dot-qualified (`container.child`); capture the dot
+        # so the target isn't truncated to the container (which would collapse
+        # `report -> downstream.{mlflow,review,dataset}` to 3 identical edges).
         edge_match = re.match(
-            r"([\w-]+(?:\s*(?:<->|->|<-)\s*[\w-]+)+)(?:\s*:\s*(.+))?$", stripped
+            r"([\w.-]+(?:\s*(?:<->|->|<-)\s*[\w.-]+)+)", stripped
         )
-        if edge_match and re.search(r'<->|->|<-', stripped):
+        if edge_match and re.search(r'<->|->|<-', edge_match.group(1)):
             chain_str = edge_match.group(1)
-            label = edge_match.group(2)
+            rest = stripped[edge_match.end():].strip()
+            if rest.startswith(":"):
+                rest = rest[1:].strip()
             style = "solid"
-            if label and "{" in label:
-                if "stroke-dash" in label:
+            label = ""
+            if "{" in rest:
+                if "stroke-dash" in rest:
                     style = "dashed"
-                label = re.sub(r"\s*\{.*", "", label).strip()
-            if label:
-                label = label.strip('" ')
+                label = rest[:rest.index("{")].strip().strip('" ')
+            else:
+                label = rest.strip().strip('" ')
+
+            def _leaf(nid):
+                # Resolve a dot-qualified ref to the child it names; children
+                # are stored by their bare id.
+                return nid.rsplit(".", 1)[-1] if "." in nid else nid
+
             # Split chain into individual edges
             parts = re.split(r'\s*(<->|->|<-)\s*', chain_str)
+            parts = [_leaf(p) if k % 2 == 0 else p for k, p in enumerate(parts)]
             # parts = [node, arrow, node, arrow, node, ...]
             for i in range(0, len(parts) - 2, 2):
                 left_node, arrow, right_node = parts[i], parts[i + 1], parts[i + 2]
@@ -269,6 +296,8 @@ def parse_d2(path):
             # node, not the enclosing container.
             in_md_block = True
             md_node_id = block_id
+            in_bold = False
+            last_md_bullet = False
             continue
 
         # Closing brace ends the current style / container block.
