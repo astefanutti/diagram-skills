@@ -95,6 +95,14 @@ rounded=1;whiteSpace=wrap;html=1;fillColor=#ececec;strokeColor=#4285f4;strokeWid
 rounded=1;whiteSpace=wrap;html=1;fillColor=#ececec;strokeColor=#34a853;strokeWidth=2;container=1;collapsible=0;verticalAlign=top;spacingTop=5;fontSize=12;fontStyle=1;fontFamily=Inter,Helvetica,Arial,sans-serif;
 ```
 
+**Nested containers**: a container child may itself be a container (e.g. an
+auto-created grouping container holding a member that was already a container).
+Each child's `rel_x`/`rel_y` is relative to its **immediate parent**. Give the
+outer container the standard `spacingTop` for its title plus ≥10px padding around
+the inner container, and the inner container its own title space plus ≥10px
+around its leaf children. The fixer sizes both bottom-up, but start the inner
+one fully inside the outer's content area (below the outer's title band).
+
 ### Edge styles
 
 ```

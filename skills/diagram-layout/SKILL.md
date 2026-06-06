@@ -65,6 +65,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/graph_analysis.py artifacts/graph-spec.json 
 
 This uses networkx to compute topological layers, fan-out/fan-in points, back-edges, and classify the topology as `pipeline`, `diamond`, `hub-spoke`, or `complex`. It enriches the graph spec with topology annotations in place.
 
+It also performs **deterministic fan-in grouping**: when ≥3 nodes are each fed by a common dispatcher *and* converge on **≥2 distinct shared targets** (the crossing-prone double fan-in, e.g. mlflow actions → both `report` and `mlflow`), they are wrapped in a new container (`"grouped": true`) and each losslessly-shared target (un-labelled, or all sharing one identical label) has its N edges replaced by a single container→target edge. A single-sink fan-out (decision branches converging on one node) is left alone. A grouped member may itself be a container, producing a **nested container** — lay it out per the nested format below. The grouping is also enforced deterministically by the fixer (Step 4), so it survives even if this layout pass lays the members out flat.
+
 ### Step 3: Generate Layout Plan (three passes)
 
 Split the layout into **three passes** to keep each thinking step focused and fast. Each pass reads only the references it needs.
@@ -157,7 +159,16 @@ The layout plan JSON format for both passes:
       "label_html": "<b>log-results</b>",
       "style": "rounded=1;whiteSpace=wrap;html=1;fillColor=#ececec;strokeColor=#333333;strokeWidth=2;container=1;collapsible=0;",
       "children": [
-        {"id": "c1_1", "rel_x": 20, "rel_y": 40, "width": 100, "height": 80, "label_html": "Params<br>...", "style": "..."}
+        {"id": "c1_1", "rel_x": 20, "rel_y": 40, "width": 100, "height": 80, "label_html": "Params<br>...", "style": "..."},
+        {
+          "id": "inner", "type": "container",
+          "rel_x": 140, "rel_y": 40, "width": 240, "height": 140,
+          "label_html": "<b>Sync Dataset</b>",
+          "style": "rounded=1;whiteSpace=wrap;html=1;fillColor=#ececec;strokeColor=#333333;strokeWidth=2;container=1;collapsible=0;",
+          "children": [
+            {"id": "inner_1", "rel_x": 20, "rel_y": 40, "width": 90, "height": 70, "label_html": "step", "style": "..."}
+          ]
+        }
       ]
     },
     {
@@ -180,6 +191,15 @@ The layout plan JSON format for both passes:
 }
 ```
 
+**Nested containers**: a container child may itself be a container with its own
+`children` (see `inner` above). Each child's `rel_x`/`rel_y` is relative to its
+**immediate parent**, so a grandchild's absolute position is
+`outer.x + inner.rel_x + grandchild.rel_x`. This is how an auto-created grouping
+container (Step 2) holds a member that was already a container. For a grouping
+container, lay out its children like any container, keep the single bundled edge
+connecting to the container border on the side facing the target, and rely on the
+fixer (`fix_container_layout`) for tight bottom-up sizing.
+
 ### Step 4: Programmatic Validation Loop
 
 **Before rendering**, iterate on the layout JSON until the validator passes clean. This catches all structural defects (crossings, S-bends, near-misses) without the cost of rendering and visual inspection.
@@ -187,11 +207,11 @@ The layout plan JSON format for both passes:
 Each iteration runs the fixer then the validator:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/fix_layout.py artifacts/layout-plan.json
+python3 ${CLAUDE_SKILL_DIR}/scripts/fix_layout.py artifacts/layout-plan.json --spec artifacts/graph-spec.json
 python3 ${CLAUDE_SKILL_DIR}/scripts/validate_layout.py artifacts/layout-plan.json
 ```
 
-The fixer mechanically corrects orthogonal snapping, overlaps, and edge-through-node issues. The validator then checks for anything the fixer couldn't resolve: edge-edge crossings, near-miss clearance (15px minimum), avoidable bends, and canvas bounds.
+The fixer **enforces the fan-in grouping** from Step 2: if the layout pass placed a grouped container's members flat, the fixer compacts them into the container (reflowing a wide nested container to a vertical column) and bundles the edges deterministically — so the grouping survives even when the layout ignored it. It reads the spec from `artifacts/graph-spec.json` automatically (it lives next to the plan); pass `--spec <path>` only if it's elsewhere. The fixer also mechanically corrects orthogonal snapping, overlaps, and edge-through-node issues. The validator then checks for anything the fixer couldn't resolve: edge-edge crossings, near-miss clearance (15px minimum), avoidable bends, and canvas bounds.
 
 **All edges MUST use orthogonal routing** — every segment is either perfectly horizontal or perfectly vertical. A tangent (diagonal) segment connecting to a node is a critical defect. If an edge arrives at a node at an angle, fix the exit/entry anchor points so the connection is orthogonal. This is enforced by `edgeStyle=orthogonalEdgeStyle` in the drawio style, but the layout plan coordinates must also be consistent — waypoints must share an x or y coordinate with adjacent waypoints. The fixer handles this automatically by inserting corner waypoints.
 

@@ -135,6 +135,16 @@ The test: if you can draw a large empty rectangle (no nodes, only edges) between
 
 ## Rule 5c: Two shared sinks → opposite sides (avoid the double-fan-in crossing)
 
+**Note:** the lossless case of this rule is now applied **automatically** by
+`graph_analysis.py` — when ≥3 operations fed by a common (non-decision)
+dispatcher all connect to a shared target via un-labelled (or identically
+labelled) edges, it pre-builds a grouping container and a single bundled
+container→target edge. When you see a `"grouped": true` container in the spec,
+just lay it out as a normal container (Rule 5/6) and place the bundled edge on
+the border facing its target. The guidance below still applies to the cases the
+grouper can't bundle (e.g. the second sink whose per-operation edges carry
+distinct labels, like `→mlflow`).
+
 When the **same** group of N operations each connect to **two** shared targets (e.g. every operation links to both a Report and an external MLflow Server), placing both targets on the **same side** of the operations column forces edge crossings — the edges to the near target cross the edges to the far one. This subgraph (N sources × 2 sinks) is planar, so the crossings are avoidable.
 
 Place the two sinks on **opposite sides** of the operations group:
