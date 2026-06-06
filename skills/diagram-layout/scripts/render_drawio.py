@@ -32,7 +32,10 @@ def _escape_for_xml_attr(html_label: str) -> str:
     return protected
 
 
-_RESERVED_IDS = {"filter", "push", "output", "style", "parent", "source", "target", "value", "edge", "vertex"}
+# "0" and "1" are draw.io's own root and default-layer cell ids; a node using
+# either collides with them and silently renders an empty diagram. The rest are
+# attribute/keyword names that have caused silent export failures.
+_RESERVED_IDS = {"0", "1", "filter", "push", "output", "style", "parent", "source", "target", "value", "edge", "vertex"}
 
 
 def _safe_id(cid, id_map):
