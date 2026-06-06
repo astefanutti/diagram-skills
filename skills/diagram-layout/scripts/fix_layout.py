@@ -125,6 +125,24 @@ def _anchor_side(pt):
     return None
 
 
+def _edge_is_backward(src, tgt, direction):
+    """True if the edge runs against the flow (a loop/feedback back-edge).
+
+    Forward edges — including dashed connections to external services — are
+    safe to simplify. True back-edges run against the flow and keep their
+    explicit exterior routing.
+    """
+    scx, scy = src["x"] + src["width"] / 2, src["y"] + src["height"] / 2
+    tcx, tcy = tgt["x"] + tgt["width"] / 2, tgt["y"] + tgt["height"] / 2
+    if direction == "left":
+        return tcx > scx + 5
+    if direction == "down":
+        return tcy < scy - 5
+    if direction == "up":
+        return tcy > scy + 5
+    return tcx < scx - 5  # default: rightward flow
+
+
 def _edge_absolute_points(edge, node_geom):
     """Compute the full absolute point chain for an edge."""
     pts = []
@@ -149,6 +167,189 @@ def _edge_absolute_points(edge, node_geom):
         })
 
     return pts
+
+
+# ---------------------------------------------------------------------------
+# Pass 0: Simplify noisy edge routes to the minimal clean orthogonal path
+# ---------------------------------------------------------------------------
+
+_SIDE_FRAC = {"left": (0, 0.5), "right": (1, 0.5),
+              "top": (0.5, 0), "bottom": (0.5, 1)}
+
+
+def fix_simplify_routes(plan):
+    """Re-route edges to the straightest clean orthogonal path.
+
+    The goal is the shortest, most direct connection: exit the side of the
+    source that faces the target and enter the side of the target that faces
+    the source. For boxes arranged side by side (or stacked) that overlap on
+    the perpendicular axis, the anchors are aligned to a common coordinate so
+    the edge is a single straight line. Otherwise a single L-bend is used.
+
+    For each edge we build candidate routes in quality order — straight on
+    the dominant axis first, then the two L-bends, then straight on the
+    secondary axis — and pick the first that clears every other node (15px)
+    and crosses no other edge. This deliberately overrides the current
+    anchors when a straighter route exists (a top/bottom connection between
+    two horizontally-arranged boxes becomes a clean right→left line). Edges
+    that genuinely need to weave around obstacles keep their routing (no
+    candidate is clean). Dashed edges (back-edges, callouts) are skipped.
+    """
+    elements = plan.get("elements", [])
+    node_geom = _node_geom_lookup(elements)
+    boxes, _, _ = _collect_boxes(elements)
+
+    container_children = {}
+    for elem in elements:
+        if elem.get("type") == "container":
+            for child in elem.get("children", []):
+                cid = child.get("id", child) if isinstance(child, dict) else child
+                container_children[cid] = elem["id"]
+
+    def edge_segments(skip_id):
+        segs = []
+        for e in elements:
+            if e.get("type") != "edge" or e.get("id") == skip_id:
+                continue
+            pts = _edge_absolute_points(e, node_geom)
+            for i in range(len(pts) - 1):
+                segs.append((pts[i]["x"], pts[i]["y"],
+                             pts[i + 1]["x"], pts[i + 1]["y"]))
+        return segs
+
+    OVERLAP_MIN = 25      # min perpendicular overlap to align a straight line
+    direction = plan.get("direction", "right")
+    fixes = 0
+
+    for elem in elements:
+        if elem.get("type") != "edge":
+            continue
+
+        src = node_geom.get(elem["from"])
+        tgt = node_geom.get(elem["to"])
+        ep = elem.get("exit_point")
+        np_ = elem.get("entry_point")
+        if not (src and tgt and ep and np_):
+            continue
+
+        # Skip true back-edges (their exterior routing is intentional);
+        # forward dashed edges (service links) get straightened like solid.
+        if "dashed=1" in elem.get("style", "") and \
+                _edge_is_backward(src, tgt, direction):
+            continue
+
+        ax, ay, aw, ah = src["x"], src["y"], src["width"], src["height"]
+        bx, by, bw, bh = tgt["x"], tgt["y"], tgt["width"], tgt["height"]
+        dx = (bx + bw / 2) - (ax + aw / 2)
+        dy = (by + bh / 2) - (ay + ah / 2)
+        yov = min(ay + ah, by + bh) - max(ay, by)
+        xov = min(ax + aw, bx + bw) - max(ax, bx)
+
+        # Each candidate: (efx, efy, nfx, nfy). Built in quality order.
+        straight_h = straight_v = l_hv = l_vh = None
+
+        # Straight horizontal: boxes separated in x, overlapping in y
+        if yov >= OVERLAP_MIN and xov <= 0:
+            y0 = (max(ay, by) + min(ay + ah, by + bh)) / 2
+            efx, nfx = (1, 0) if dx > 0 else (0, 1)
+            straight_h = (efx, (y0 - ay) / ah, nfx, (y0 - by) / bh)
+        # Straight vertical: boxes separated in y, overlapping in x
+        if xov >= OVERLAP_MIN and yov <= 0:
+            x0 = (max(ax, bx) + min(ax + aw, bx + bw)) / 2
+            efy, nfy = (1, 0) if dy > 0 else (0, 1)
+            straight_v = ((x0 - ax) / aw, efy, (x0 - bx) / bw, nfy)
+        # L-bend, exit horizontal / entry vertical
+        l_hv = (1 if dx > 0 else 0, 0.5, 0.5, 0 if dy > 0 else 1)
+        # L-bend, exit vertical / entry horizontal
+        l_vh = (0.5, 1 if dy > 0 else 0, 0 if dx > 0 else 1, 0.5)
+
+        if abs(dx) >= abs(dy):
+            cands = [straight_h, l_hv, l_vh, straight_v]
+        else:
+            cands = [straight_v, l_vh, l_hv, straight_h]
+        cands = [c for c in cands if c is not None]
+
+        connected = {elem["from"], elem["to"]}
+        sp = container_children.get(elem["from"])
+        tp = container_children.get(elem["to"])
+        if sp and sp == tp:
+            connected.add(sp)
+
+        other_segs = None
+        chosen = None
+        for efx, efy, nfx, nfy in cands:
+            ex = ax + efx * aw
+            ey = ay + efy * ah
+            nx = bx + nfx * bw
+            ny = by + nfy * bh
+            # Single corner where exit and entry axes meet; empty if straight
+            if abs(ex - nx) < 1 or abs(ey - ny) < 1:
+                cand_wps = []
+            elif efx in (0, 1):   # exit horizontal → corner aligns to exit y
+                cand_wps = [{"x": nx, "y": ey}]
+            else:                 # exit vertical → corner aligns to exit x
+                cand_wps = [{"x": ex, "y": ny}]
+
+            pts = [{"x": ex, "y": ey}] + cand_wps + [{"x": nx, "y": ny}]
+
+            clear = True
+            for i in range(len(pts) - 1):
+                for box in boxes:
+                    if box["id"] in connected:
+                        continue
+                    parent = container_children.get(box["id"])
+                    if parent and parent in connected:
+                        continue
+                    if _segment_intersects_box(
+                        pts[i]["x"], pts[i]["y"],
+                        pts[i + 1]["x"], pts[i + 1]["y"], box, margin=15
+                    ):
+                        clear = False
+                        break
+                if not clear:
+                    break
+            if not clear:
+                continue
+
+            if other_segs is None:
+                other_segs = edge_segments(elem.get("id"))
+            crosses = False
+            for i in range(len(pts) - 1):
+                for ox1, oy1, ox2, oy2 in other_segs:
+                    if _segments_intersect(
+                        pts[i]["x"], pts[i]["y"],
+                        pts[i + 1]["x"], pts[i + 1]["y"],
+                        ox1, oy1, ox2, oy2
+                    ):
+                        crosses = True
+                        break
+                if crosses:
+                    break
+            if crosses:
+                continue
+
+            chosen = (efx, efy, nfx, nfy, cand_wps)
+            break
+
+        if not chosen:
+            continue
+
+        efx, efy, nfx, nfy, cand_wps = chosen
+        cur = elem.get("waypoints") or []
+        same = (abs(ep["x"] - efx) < 1e-6 and abs(ep["y"] - efy) < 1e-6
+                and abs(np_["x"] - nfx) < 1e-6 and abs(np_["y"] - nfy) < 1e-6
+                and len(cur) == len(cand_wps) and all(
+                    abs(a["x"] - b["x"]) < 1 and abs(a["y"] - b["y"]) < 1
+                    for a, b in zip(cur, cand_wps)))
+        if same:
+            continue
+
+        elem["exit_point"] = {"x": efx, "y": efy}
+        elem["entry_point"] = {"x": nfx, "y": nfy}
+        elem["waypoints"] = cand_wps
+        fixes += 1
+
+    return fixes
 
 
 # ---------------------------------------------------------------------------
@@ -1319,7 +1520,7 @@ def fix_strip_waypoints(plan):
 # Main
 # ---------------------------------------------------------------------------
 
-def _run_passes(plan, corner_anchors=True):
+def _run_passes(plan, corner_anchors=True, simplify=True):
     """Run the full fix pipeline on a plan. Returns a summary dict."""
     summary = {}
 
@@ -1328,6 +1529,9 @@ def _run_passes(plan, corner_anchors=True):
     summary["entry_exit"] = fix_entry_exit(plan)
     if corner_anchors:
         summary["corner_anchors"] = fix_corner_anchors(plan)
+    # Collapse noisy/redundant routes to the minimal clean path
+    if simplify:
+        summary["simplify_routes"] = fix_simplify_routes(plan)
     summary["anchor_alignment"] = fix_anchor_alignment(plan)
     summary["orthogonal_pass1"] = fix_orthogonal(plan)
     summary["spikes_pass1"] = fix_spikes(plan)
@@ -1338,6 +1542,8 @@ def _run_passes(plan, corner_anchors=True):
     summary["entry_exit_pass2"] = fix_entry_exit(plan)
     if corner_anchors:
         summary["corner_anchors_pass2"] = fix_corner_anchors(plan)
+    if simplify:
+        summary["simplify_routes_pass2"] = fix_simplify_routes(plan)
     summary["anchor_alignment_pass2"] = fix_anchor_alignment(plan)
     summary["orthogonal_pass2"] = fix_orthogonal(plan)
     summary["spikes_pass2"] = fix_spikes(plan)
@@ -1364,33 +1570,35 @@ def _count_issues(plan):
 def fix(plan):
     """Apply all fix passes and return a summary.
 
-    The corner-anchor redistribution can occasionally trade a cosmetic
-    win (arrows off the box corners) for a real defect (a new crossing).
-    The validator doesn't score near-corner anchors, so we run the whole
-    pipeline both with and without that pass and keep whichever yields
-    fewer validator issues — ties go to the corner-anchor version, which
-    preserves the cosmetic improvement at no measurable cost.
+    Two passes are beneficial-but-occasionally-risky: corner-anchor
+    redistribution and route simplification can each trade a visual win for a
+    real defect (a new crossing or edge-through-node) that the validator
+    doesn't always offset. So we run the whole pipeline for each on/off
+    combination of the two and keep whichever yields the fewest validator
+    issues. Combinations are tried most-features-first and ties go to the
+    earlier (more-featured) combination, preserving cosmetic improvements at
+    no measurable cost.
     """
     import copy
 
-    plan_with = copy.deepcopy(plan)
-    summary_with = _run_passes(plan_with, corner_anchors=True)
-    issues_with = _count_issues(plan_with)
-
-    plan_without = copy.deepcopy(plan)
-    summary_without = _run_passes(plan_without, corner_anchors=False)
-    issues_without = _count_issues(plan_without)
-
-    if issues_with <= issues_without:
-        chosen, summary = plan_with, summary_with
-    else:
-        chosen, summary = plan_without, summary_without
+    best_plan = None
+    best_summary = None
+    best_issues = None
+    for corner_anchors, simplify in (
+        (True, True), (True, False), (False, True), (False, False)
+    ):
+        trial = copy.deepcopy(plan)
+        summary = _run_passes(trial, corner_anchors=corner_anchors,
+                              simplify=simplify)
+        issues = _count_issues(trial)
+        if best_issues is None or issues < best_issues:
+            best_plan, best_summary, best_issues = trial, summary, issues
 
     plan.clear()
-    plan.update(chosen)
+    plan.update(best_plan)
 
-    summary["total"] = sum(summary.values())
-    return summary
+    best_summary["total"] = sum(best_summary.values())
+    return best_summary
 
 
 def main():
