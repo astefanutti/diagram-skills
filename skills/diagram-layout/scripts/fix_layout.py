@@ -1296,8 +1296,96 @@ def fix_compact_gaps(plan, min_gap=120, target_gap=70):
 # Pass 3: Edge-through-node rerouting
 # ---------------------------------------------------------------------------
 
+def _seg_hits_any_node(pts, boxes, connected, container_children, margin=0):
+    """Return the first node a multi-segment path passes through, or None."""
+    for i in range(len(pts) - 1):
+        for box in boxes:
+            if box["id"] in connected:
+                continue
+            parent = container_children.get(box["id"])
+            if parent and parent in connected:
+                continue
+            if _segment_intersects_box(
+                pts[i]["x"], pts[i]["y"], pts[i + 1]["x"], pts[i + 1]["y"],
+                box, margin
+            ):
+                return box
+    return None
+
+
+def _predicted_route_pts(exit_abs, entry_abs, es, ns):
+    """The orthogonal point chain draw.io draws for a waypoint-free edge."""
+    ex, ey = exit_abs["x"], exit_abs["y"]
+    nx, ny = entry_abs["x"], entry_abs["y"]
+    if abs(ex - nx) <= 1 or abs(ey - ny) <= 1:
+        corner = None
+    elif es in ("left", "right") and ns in ("top", "bottom"):
+        corner = {"x": nx, "y": ey}
+    elif es in ("top", "bottom") and ns in ("left", "right"):
+        corner = {"x": ex, "y": ny}
+    else:
+        corner = {"x": nx, "y": ey}
+    return [exit_abs] + ([corner] if corner else []) + [entry_abs]
+
+
+def _corridor_route(src, tgt, boxes, connected, container_children):
+    """Route through the clear gap between two non-overlapping boxes.
+
+    For a long edge that would otherwise plow across a row of nodes (e.g. a
+    row-wrap connector), exit toward the empty band between the source and
+    target and run across it. Returns (exit_point, entry_point, waypoints) for
+    the first gap whose 3-segment path clears every node, else None.
+    """
+    sx, sy, sw, sh = src["x"], src["y"], src["width"], src["height"]
+    tx, ty, tw, th = tgt["x"], tgt["y"], tgt["width"], tgt["height"]
+    scx, scy = sx + sw / 2, sy + sh / 2
+    tcx, tcy = tx + tw / 2, ty + th / 2
+    yov = min(sy + sh, ty + th) - max(sy, ty)
+    xov = min(sx + sw, tx + tw) - max(sx, tx)
+
+    candidates = []
+    if yov <= 0:                       # horizontal corridor in the vertical gap
+        if scy < tcy:
+            band = ((sy + sh) + ty) / 2
+            e_pt, n_pt = {"x": 0.5, "y": 1}, {"x": 0.5, "y": 0}
+            ey0, ny0 = sy + sh, ty
+        else:
+            band = ((ty + th) + sy) / 2
+            e_pt, n_pt = {"x": 0.5, "y": 0}, {"x": 0.5, "y": 1}
+            ey0, ny0 = sy, ty + th
+        pts = [{"x": scx, "y": ey0}, {"x": scx, "y": band},
+               {"x": tcx, "y": band}, {"x": tcx, "y": ny0}]
+        candidates.append((e_pt, n_pt,
+                           [{"x": scx, "y": band}, {"x": tcx, "y": band}], pts))
+    if xov <= 0:                       # vertical corridor in the horizontal gap
+        if scx < tcx:
+            band = ((sx + sw) + tx) / 2
+            e_pt, n_pt = {"x": 1, "y": 0.5}, {"x": 0, "y": 0.5}
+            ex0, nx0 = sx + sw, tx
+        else:
+            band = ((tx + tw) + sx) / 2
+            e_pt, n_pt = {"x": 0, "y": 0.5}, {"x": 1, "y": 0.5}
+            ex0, nx0 = sx, tx + tw
+        pts = [{"x": ex0, "y": scy}, {"x": band, "y": scy},
+               {"x": band, "y": tcy}, {"x": nx0, "y": tcy}]
+        candidates.append((e_pt, n_pt,
+                           [{"x": band, "y": scy}, {"x": band, "y": tcy}], pts))
+
+    for e_pt, n_pt, wps, pts in candidates:
+        if not _seg_hits_any_node(pts, boxes, connected, container_children):
+            return e_pt, n_pt, wps
+    return None
+
+
 def fix_edge_through_node(plan, clearance=20):
-    """Insert waypoints to route edges around obstructing nodes."""
+    """Route edges around obstructing nodes — including waypoint-free ones.
+
+    Waypoint-free edges are materialized to the orthogonal route draw.io would
+    actually draw (which does NOT avoid nodes), so a long left-going edge that
+    would plow across a row is caught. Such an edge is first re-routed through
+    the clear gap between its endpoints (a row-wrap corridor); only if no gap
+    is clear does it fall back to per-obstructor detours.
+    """
     elements = plan.get("elements", [])
     node_geom = _node_geom_lookup(elements)
     boxes, _, _ = _collect_boxes(elements)
@@ -1340,9 +1428,32 @@ def fix_edge_through_node(plan, clearance=20):
             "y": tgt["y"] + np_["y"] * tgt["height"],
         }
 
-        all_pts = [exit_abs] + wps + [entry_abs]
+        # For a waypoint-free edge, check the route draw.io will actually draw.
+        if wps:
+            all_pts = [exit_abs] + wps + [entry_abs]
+        else:
+            all_pts = _predicted_route_pts(
+                exit_abs, entry_abs, _anchor_side(ep), _anchor_side(np_))
 
-        # Check each segment for collisions and collect obstructors
+        # If the (predicted) route is clear, leave the edge untouched —
+        # keeps clean waypoint-free edges editable.
+        if not _seg_hits_any_node(all_pts, boxes, connected_ids,
+                                  container_children):
+            continue
+
+        # Prefer a clean corridor route through the gap between the endpoints
+        # (handles row-wrap connectors that cross a whole row of nodes).
+        corridor = _corridor_route(src, tgt, boxes, connected_ids,
+                                   container_children)
+        if corridor:
+            e_pt, n_pt, cwps = corridor
+            elem["exit_point"] = e_pt
+            elem["entry_point"] = n_pt
+            elem["waypoints"] = cwps
+            fixes += 1
+            continue
+
+        # Fallback: per-obstructor detours along the materialized route.
         rerouted = False
         new_wps = []
 
