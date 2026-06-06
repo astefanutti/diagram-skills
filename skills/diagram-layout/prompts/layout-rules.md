@@ -265,6 +265,8 @@ For every edge, choose the exit side that FACES the target and the entry side th
 - Target is primarily to the **left** → exit from **left** (`exitX=0`)
 - For the entry point, apply the same logic in reverse: if the source is above-right, enter from the **right** or **top**
 
+**Decision (rhombus) nodes — anchor only at the four vertices**: a diamond touches its bounding box solely at the edge-midpoints — top `(0.5, 0)`, bottom `(0.5, 1)`, left `(0, 0.5)`, right `(1, 0.5)`. These are the ONLY valid exit/entry points on a decision node. Any other fraction (e.g. `exitX=1, exitY=0.7`) lands in an empty corner of the bounding box, so the edge appears to start off the shape. Pick the vertex facing the other endpoint, and fan a decision node's branches across distinct vertices (e.g. default branch down, alternative branch right) rather than crowding one side.
+
 **Back-edges specifically**: a back-edge from a right-side node to a lower-left node should exit from the **bottom** (target is below) and enter from the **right** (source is to the right). This gives one clean L-bend: straight down, then straight left. Exiting from the right side would add an unnecessary rightward jog before descending.
 
 **Waypoint template for bottom-exit, right-entry back-edge**:

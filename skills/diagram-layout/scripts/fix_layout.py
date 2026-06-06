@@ -106,6 +106,31 @@ def _node_geom_lookup(elements):
     return geom
 
 
+# A rhombus (decision node) only touches its bounding box at the four
+# edge-midpoints — its vertices. Each is paired with its outward unit
+# direction so an anchor can be matched to the vertex pointing at the other
+# endpoint.
+_DIAMOND_VERTS = [
+    ((0.5, 0.0), (0.0, -1.0)),  # top
+    ((0.5, 1.0), (0.0, 1.0)),   # bottom
+    ((0.0, 0.5), (-1.0, 0.0)),  # left
+    ((1.0, 0.5), (1.0, 0.0)),   # right
+]
+
+
+def _is_diamond(geom):
+    """True if a node's style marks it a decision (rhombus) shape."""
+    return geom is not None and "rhombus" in (geom.get("style", "") or "")
+
+
+def _vertex_of(pt, tol=0.02):
+    """Return the diamond vertex an anchor already sits on, else None."""
+    for (vx, vy), _ in _DIAMOND_VERTS:
+        if abs(pt.get("x", -9) - vx) <= tol and abs(pt.get("y", -9) - vy) <= tol:
+            return (vx, vy)
+    return None
+
+
 def _anchor_side(pt):
     """Return which box side an exit/entry point attaches to, or None.
 
@@ -230,6 +255,13 @@ def fix_simplify_routes(plan):
         ep = elem.get("exit_point")
         np_ = elem.get("entry_point")
         if not (src and tgt and ep and np_):
+            continue
+
+        # A decision (rhombus) node anchors only at its vertices; the straighten
+        # candidates below would slide the anchor along a box side to line it up
+        # with the target, pushing it off the vertex. Leave diamond-connected
+        # edges to the orthogonal pass (which keeps the vertex and adds a bend).
+        if _is_diamond(src) or _is_diamond(tgt):
             continue
 
         # Skip true back-edges (their exterior routing is intentional);
@@ -357,6 +389,99 @@ def fix_simplify_routes(plan):
 # ---------------------------------------------------------------------------
 
 _PERPENDICULAR_OFFSET = 25
+
+
+def fix_diamond_anchors(plan):
+    """Snap edge anchors on decision (rhombus) nodes to a diamond vertex.
+
+    A rhombus only touches its bounding box at the four edge-midpoints (its
+    vertices). Any other fractional anchor — e.g. exitX=1,exitY=0.7 — lands in
+    an empty bounding-box corner, so the edge appears to start or end off the
+    shape rather than on it. Snap each off-vertex anchor to the vertex whose
+    outward direction best points at the other endpoint, preferring a vertex
+    not already taken by another edge on the same diamond so the connections
+    fan across the four points instead of stacking on one.
+
+    Runs before the routing passes so they build clean orthogonal routes from
+    the corrected anchor; already-correct vertex anchors are left untouched.
+    """
+    elements = plan.get("elements", [])
+    node_geom = _node_geom_lookup(elements)
+    diamonds = {nid for nid, g in node_geom.items() if _is_diamond(g)}
+    if not diamonds:
+        return 0
+
+    def _center(g):
+        return (g["x"] + g["width"] / 2.0, g["y"] + g["height"] / 2.0)
+
+    # Group every endpoint attached to a diamond.
+    attach = {d: [] for d in diamonds}
+    for elem in elements:
+        if elem.get("type") != "edge":
+            continue
+        if elem.get("from") in diamonds and elem.get("exit_point"):
+            attach[elem["from"]].append((elem, "exit"))
+        if elem.get("to") in diamonds and elem.get("entry_point"):
+            attach[elem["to"]].append((elem, "entry"))
+
+    fixes = 0
+    for d, members in attach.items():
+        dcx, dcy = _center(node_geom[d])
+        occupied = {}        # vertex -> already claimed
+        pending = []
+        for elem, role in members:
+            pt = elem["exit_point"] if role == "exit" else elem["entry_point"]
+            v = _vertex_of(pt)
+            if v is not None:
+                occupied.setdefault(v, True)
+                # Already on the right side but a hair off the exact tip — snap
+                # it precisely (keeps its route; later passes realign the
+                # adjacent waypoint).
+                if (pt["x"], pt["y"]) != v:
+                    pt["x"], pt["y"] = v
+                    fixes += 1
+            else:
+                pending.append((elem, role))
+        if not pending:
+            continue
+
+        # Rank each pending anchor's vertices by how well their outward
+        # direction matches the direction to the other endpoint.
+        scored = []
+        for elem, role in pending:
+            other_id = elem["to"] if role == "exit" else elem["from"]
+            og = node_geom.get(other_id)
+            if not og:
+                continue
+            ox, oy = _center(og)
+            dx, dy = ox - dcx, oy - dcy
+            norm = (dx * dx + dy * dy) ** 0.5 or 1.0
+            ux, uy = dx / norm, dy / norm
+            ranked = sorted(
+                _DIAMOND_VERTS,
+                key=lambda vd: -(vd[1][0] * ux + vd[1][1] * uy),
+            )
+            best = ranked[0][1][0] * ux + ranked[0][1][1] * uy
+            scored.append((best, elem, role, ranked))
+
+        # Assign strongest preference first so the clearest direction wins its
+        # vertex; weaker ones take the next free vertex (sharing only if all
+        # four are taken).
+        scored.sort(key=lambda s: -s[0])
+        for _best, elem, role, ranked in scored:
+            chosen = next(((vx, vy) for (vx, vy), _ in ranked
+                           if (vx, vy) not in occupied), ranked[0][0])
+            occupied.setdefault(chosen, True)
+            pt = elem["exit_point"] if role == "exit" else elem["entry_point"]
+            if (pt["x"], pt["y"]) != chosen:
+                pt["x"], pt["y"] = chosen
+                # The old waypoints were laid out for the previous anchor (often
+                # on a different side); drop them so the routing passes that run
+                # next rebuild a clean orthogonal route from the new vertex.
+                elem["waypoints"] = []
+                fixes += 1
+
+    return fixes
 
 
 def fix_entry_exit(plan):
@@ -574,6 +699,11 @@ def fix_corner_anchors(plan, near=0.15, lo=0.3, hi=0.7):
 
     fixes = 0
     for (box_id, side), members in groups.items():
+        # Never redistribute a diamond's anchors — its only valid attach points
+        # are the four vertices, and spreading them across [lo, hi] would push
+        # them back off the shape (handled by fix_diamond_anchors instead).
+        if _is_diamond(node_geom.get(box_id)):
+            continue
         # Only act on clustered pairs (the "two arrows at a corner" case).
         # A single near-corner anchor is often intentional (fan-out offset).
         if len(members) < 2:
@@ -1832,6 +1962,8 @@ def _run_passes(plan, corner_anchors=True, simplify=True, gravity=True):
     # Pull stranded nodes toward their connections before routing edges
     if gravity:
         summary["gravity"] = fix_gravity(plan)
+    # Snap decision-node anchors to diamond vertices before routes are built
+    summary["diamond_anchors"] = fix_diamond_anchors(plan)
     summary["entry_exit"] = fix_entry_exit(plan)
     if corner_anchors:
         summary["corner_anchors"] = fix_corner_anchors(plan)
