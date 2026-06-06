@@ -69,41 +69,114 @@ def _segments_intersect(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2):
 # ---------------------------------------------------------------------------
 
 def _collect_boxes(elements):
-    """Build a list of node bounding boxes from the layout plan elements."""
+    """Build a list of node bounding boxes from the layout plan elements.
+
+    Recurses through nested containers, composing absolute coordinates
+    (``abs = parent_abs + child.rel``) so edge-clearance and through-node
+    checks account for nodes at every nesting depth. Any box with children is
+    a container; every descendant id (including an intermediate container that
+    is itself a child) lands in ``container_child_ids``.
+    """
     boxes = []
     container_ids = set()
     container_child_ids = set()
+
+    def _walk(elem, abs_x, abs_y):
+        boxes.append({
+            "id": elem["id"],
+            "x": abs_x,
+            "y": abs_y,
+            "w": elem["width"],
+            "h": elem["height"],
+        })
+        children = elem.get("children", [])
+        if children:
+            container_ids.add(elem["id"])
+            for child in children:
+                container_child_ids.add(child["id"])
+                _walk(child, abs_x + child["rel_x"], abs_y + child["rel_y"])
+
     for elem in elements:
-        etype = elem.get("type", "node")
-        if etype in ("node", "container"):
-            boxes.append({
-                "id": elem["id"],
-                "x": elem["x"],
-                "y": elem["y"],
-                "w": elem["width"],
-                "h": elem["height"],
-            })
-            if etype == "container":
-                container_ids.add(elem["id"])
-                for child in elem.get("children", []):
-                    container_child_ids.add(child["id"])
-                    boxes.append({
-                        "id": child["id"],
-                        "x": elem["x"] + child["rel_x"],
-                        "y": elem["y"] + child["rel_y"],
-                        "w": child["width"],
-                        "h": child["height"],
-                    })
+        if elem.get("type", "node") in ("node", "container"):
+            _walk(elem, elem["x"], elem["y"])
     return boxes, container_ids, container_child_ids
 
 
 def _node_geom_lookup(elements):
-    """Build a dict of node/container geometry by ID."""
+    """Map node/container id → geometry (absolute coords), including nesting.
+
+    Top-level elements map to themselves (mutable). Nested container children
+    map to a read-only proxy carrying absolute coordinates (composed down the
+    parent chain) plus width/height/style, so edge-routing passes can anchor
+    and route edges that touch a nested child. Node-moving passes iterate
+    `elements` (top-level only), so they never reposition a nested child here.
+    """
     geom = {}
+
+    def _walk(elem, abs_x, abs_y, top_level):
+        if top_level:
+            geom[elem["id"]] = elem
+        else:
+            geom[elem["id"]] = {
+                "id": elem["id"], "x": abs_x, "y": abs_y,
+                "width": elem["width"], "height": elem["height"],
+                "style": elem.get("style", ""),
+            }
+        for child in elem.get("children", []):
+            _walk(child, abs_x + child["rel_x"], abs_y + child["rel_y"], False)
+
     for elem in elements:
         if elem.get("type", "node") in ("node", "container"):
-            geom[elem["id"]] = elem
+            _walk(elem, elem["x"], elem["y"], True)
     return geom
+
+
+def _ancestor_map(elements):
+    """Map each nested node id → list of its ancestor container ids (inner→outer)."""
+    anc = {}
+
+    def _walk(elem, chain):
+        for child in elem.get("children", []):
+            cid = child["id"]
+            anc[cid] = chain
+            _walk(child, [cid] + chain)
+
+    for elem in elements:
+        if elem.get("type", "node") in ("node", "container"):
+            _walk(elem, [elem["id"]])
+    return anc
+
+
+def _descendant_map(elements):
+    """Map each container id → set of all descendant ids (any depth)."""
+    desc = {}
+
+    def _walk(elem):
+        ids = set()
+        for child in elem.get("children", []):
+            ids.add(child["id"])
+            ids |= _walk(child)
+        if ids:
+            desc[elem["id"]] = ids
+        return ids
+
+    for elem in elements:
+        if elem.get("type", "node") in ("node", "container"):
+            _walk(elem)
+    return desc
+
+
+def _edge_skip_ids(from_id, to_id, anc, desc):
+    """Boxes an edge must not treat as obstacles: its endpoints, every container
+    enclosing an endpoint (the edge crosses their borders), and — when an
+    endpoint is itself a container — that container's descendants (the bundled
+    edge leaves from the container's border, not its interior nodes)."""
+    skip = {from_id, to_id}
+    skip.update(anc.get(from_id, ()))
+    skip.update(anc.get(to_id, ()))
+    skip.update(desc.get(from_id, ()))
+    skip.update(desc.get(to_id, ()))
+    return skip
 
 
 # A rhombus (decision node) only touches its bounding box at the four
@@ -223,13 +296,8 @@ def fix_simplify_routes(plan):
     elements = plan.get("elements", [])
     node_geom = _node_geom_lookup(elements)
     boxes, _, _ = _collect_boxes(elements)
-
-    container_children = {}
-    for elem in elements:
-        if elem.get("type") == "container":
-            for child in elem.get("children", []):
-                cid = child.get("id", child) if isinstance(child, dict) else child
-                container_children[cid] = elem["id"]
+    anc = _ancestor_map(elements)
+    desc = _descendant_map(elements)
 
     def edge_segments(skip_id):
         segs = []
@@ -301,11 +369,7 @@ def fix_simplify_routes(plan):
             cands = [straight_v, l_vh, l_hv, straight_h]
         cands = [c for c in cands if c is not None]
 
-        connected = {elem["from"], elem["to"]}
-        sp = container_children.get(elem["from"])
-        tp = container_children.get(elem["to"])
-        if sp and sp == tp:
-            connected.add(sp)
+        connected = _edge_skip_ids(elem["from"], elem["to"], anc, desc)
 
         other_segs = None
         chosen = None
@@ -328,9 +392,6 @@ def fix_simplify_routes(plan):
             for i in range(len(pts) - 1):
                 for box in boxes:
                     if box["id"] in connected:
-                        continue
-                    parent = container_children.get(box["id"])
-                    if parent and parent in connected:
                         continue
                     if _segment_intersects_box(
                         pts[i]["x"], pts[i]["y"],
@@ -481,6 +542,46 @@ def fix_diamond_anchors(plan):
                 elem["waypoints"] = []
                 fixes += 1
 
+    return fixes
+
+
+def fix_assign_anchors(plan):
+    """Give anchorless edges an exit/entry that faces the other endpoint.
+
+    The LLM sometimes leaves an edge with no exit/entry point (common for edges
+    into a nested container's children), so draw.io free-routes it and the path
+    wanders. Assign the side facing the target (Rule 8c) so the later
+    orthogonal/anchor passes can route it cleanly.
+    """
+    elements = plan.get("elements", [])
+    node_geom = _node_geom_lookup(elements)
+    fixes = 0
+    for elem in elements:
+        if elem.get("type") != "edge":
+            continue
+        if elem.get("exit_point") and elem.get("entry_point"):
+            continue
+        src = node_geom.get(elem["from"])
+        tgt = node_geom.get(elem["to"])
+        if not (src and tgt):
+            continue
+        scx = src["x"] + src["width"] / 2
+        scy = src["y"] + src["height"] / 2
+        tcx = tgt["x"] + tgt["width"] / 2
+        tcy = tgt["y"] + tgt["height"] / 2
+        dx, dy = tcx - scx, tcy - scy
+        if abs(dx) >= abs(dy):
+            exit_pt = (1.0, 0.5) if dx >= 0 else (0.0, 0.5)
+            entry_pt = (0.0, 0.5) if dx >= 0 else (1.0, 0.5)
+        else:
+            exit_pt = (0.5, 1.0) if dy >= 0 else (0.5, 0.0)
+            entry_pt = (0.5, 0.0) if dy >= 0 else (0.5, 1.0)
+        if not elem.get("exit_point"):
+            elem["exit_point"] = {"x": exit_pt[0], "y": exit_pt[1]}
+            fixes += 1
+        if not elem.get("entry_point"):
+            elem["entry_point"] = {"x": entry_pt[0], "y": entry_pt[1]}
+            fixes += 1
     return fixes
 
 
@@ -820,13 +921,9 @@ def fix_orthogonal(plan):
     boxes, _, _ = _collect_boxes(elements)
     fixes = 0
 
-    # Build container parent map for skip logic in corner collision checks
-    container_children_map = {}
-    for elem in elements:
-        if elem.get("type") == "container":
-            for child in elem.get("children", []):
-                child_id = child.get("id", child) if isinstance(child, dict) else child
-                container_children_map[child_id] = elem["id"]
+    # Ancestor/descendant maps for skip logic in corner collision checks
+    anc = _ancestor_map(elements)
+    desc = _descendant_map(elements)
 
     for elem in elements:
         if elem.get("type") != "edge":
@@ -840,6 +937,14 @@ def fix_orthogonal(plan):
             continue
 
         wps = list(elem.get("waypoints") or [])
+
+        # A waypoint-free edge touching a nested container child is best left to
+        # draw.io's orthogonal router: materializing a single corner here stacks
+        # the corners of a fan-out and can't be stripped later (the sibling
+        # container blocks the clearance check), creating crossings draw.io
+        # would have avoided. Edges with explicit waypoints are still squared.
+        if not wps and (anc.get(elem["from"]) or anc.get(elem["to"])):
+            continue
 
         # Build absolute point chain: exit → waypoints → entry
         exit_abs = {
@@ -858,11 +963,7 @@ def fix_orthogonal(plan):
         es = _anchor_side(ep)
         ns = _anchor_side(np_)
 
-        connected_ids = {elem["from"], elem["to"]}
-        src_parent = container_children_map.get(elem["from"])
-        tgt_parent = container_children_map.get(elem["to"])
-        if src_parent and src_parent == tgt_parent:
-            connected_ids.add(src_parent)
+        connected_ids = _edge_skip_ids(elem["from"], elem["to"], anc, desc)
 
         last_i = len(all_pts) - 2
         for i in range(len(all_pts) - 1):
@@ -1111,14 +1212,19 @@ def fix_container_layout(plan, bottom_pad=18, side_pad=18):
     padding. Only shrinks (never grows) so it can't create new overlaps.
     """
     elements = plan.get("elements", [])
-    fixes = 0
 
-    for elem in elements:
-        if elem.get("type") != "container":
-            continue
-        children = elem.get("children", [])
+    def _tidy(cont):
+        """Tidy one container in place. Recurses into nested child containers
+        first (bottom-up) so the outer hugs an already-sized inner. Works on
+        any container dict — sizing reads width/height + children rel coords,
+        never the container's own x/y, so it's position-agnostic."""
+        fixes = 0
+        children = cont.get("children", [])
+        for c in children:
+            if c.get("children"):
+                fixes += _tidy(c)
         if len(children) < 2:
-            continue
+            return fixes
 
         # Classify layout: row (side by side) vs column (stacked)
         xs = sorted(children, key=lambda c: c["rel_x"])
@@ -1139,33 +1245,39 @@ def fix_container_layout(plan, bottom_pad=18, side_pad=18):
             # Equalize heights, align to the top band
             max_h = max(c["height"] for c in children)
             required_h = top_band + max_h + bottom_pad
-            if required_h <= elem["height"] + 1:
+            if required_h <= cont["height"] + 1:
                 for c in children:
                     c["rel_y"] = top_band
                     c["height"] = max_h
-                elem["height"] = required_h
+                cont["height"] = required_h
                 # Hug width to the rightmost child
                 right = max(c["rel_x"] + c["width"] for c in children)
                 new_w = right + left_band
-                if new_w <= elem["width"] + 1:
-                    elem["width"] = new_w
+                if new_w <= cont["width"] + 1:
+                    cont["width"] = new_w
                 fixes += 1
 
         elif column and not row:
             # Equalize widths, align to the left band
             max_w = max(c["width"] for c in children)
             required_w = left_band + max_w + side_pad
-            if required_w <= elem["width"] + 1:
+            if required_w <= cont["width"] + 1:
                 for c in children:
                     c["rel_x"] = left_band
                     c["width"] = max_w
-                elem["width"] = required_w
+                cont["width"] = required_w
                 bottom = max(c["rel_y"] + c["height"] for c in children)
                 new_h = bottom + top_band
-                if new_h <= elem["height"] + 1:
-                    elem["height"] = new_h
+                if new_h <= cont["height"] + 1:
+                    cont["height"] = new_h
                 fixes += 1
 
+        return fixes
+
+    fixes = 0
+    for elem in elements:
+        if elem.get("type") == "container":
+            fixes += _tidy(elem)
     return fixes
 
 
@@ -1451,14 +1563,16 @@ def fix_compact_gaps(plan, min_gap=120, target_gap=70):
 # Pass 3: Edge-through-node rerouting
 # ---------------------------------------------------------------------------
 
-def _seg_hits_any_node(pts, boxes, connected, container_children, margin=0):
-    """Return the first node a multi-segment path passes through, or None."""
+def _seg_hits_any_node(pts, boxes, connected, margin=0):
+    """Return the first node a multi-segment path passes through, or None.
+
+    `connected` already contains the edge's endpoints, the containers enclosing
+    them, and (for a container endpoint) that container's descendants, so no
+    separate parent check is needed — siblings stay obstacles to route around.
+    """
     for i in range(len(pts) - 1):
         for box in boxes:
             if box["id"] in connected:
-                continue
-            parent = container_children.get(box["id"])
-            if parent and parent in connected:
                 continue
             if _segment_intersects_box(
                 pts[i]["x"], pts[i]["y"], pts[i + 1]["x"], pts[i + 1]["y"],
@@ -1483,7 +1597,7 @@ def _predicted_route_pts(exit_abs, entry_abs, es, ns):
     return [exit_abs] + ([corner] if corner else []) + [entry_abs]
 
 
-def _corridor_route(src, tgt, boxes, connected, container_children):
+def _corridor_route(src, tgt, boxes, connected):
     """Route through the clear gap between two non-overlapping boxes.
 
     For a long edge that would otherwise plow across a row of nodes (e.g. a
@@ -1527,7 +1641,7 @@ def _corridor_route(src, tgt, boxes, connected, container_children):
                            [{"x": band, "y": scy}, {"x": band, "y": tcy}], pts))
 
     for e_pt, n_pt, wps, pts in candidates:
-        if not _seg_hits_any_node(pts, boxes, connected, container_children):
+        if not _seg_hits_any_node(pts, boxes, connected):
             return e_pt, n_pt, wps
     return None
 
@@ -1545,13 +1659,9 @@ def fix_edge_through_node(plan, clearance=20):
     node_geom = _node_geom_lookup(elements)
     boxes, _, _ = _collect_boxes(elements)
 
-    # Build container parent map for skip logic
-    container_children = {}
-    for elem in elements:
-        if elem.get("type") == "container":
-            for child in elem.get("children", []):
-                child_id = child.get("id", child) if isinstance(child, dict) else child
-                container_children[child_id] = elem["id"]
+    # Ancestor/descendant maps for skip logic
+    anc = _ancestor_map(elements)
+    desc = _descendant_map(elements)
 
     fixes = 0
 
@@ -1566,12 +1676,7 @@ def fix_edge_through_node(plan, clearance=20):
         if not (src and tgt and ep and np_):
             continue
 
-        connected_ids = {elem["from"], elem["to"]}
-        # Skip the parent container if both source and target are its children
-        src_parent = container_children.get(elem["from"])
-        tgt_parent = container_children.get(elem["to"])
-        if src_parent and src_parent == tgt_parent:
-            connected_ids.add(src_parent)
+        connected_ids = _edge_skip_ids(elem["from"], elem["to"], anc, desc)
         wps = list(elem.get("waypoints") or [])
 
         exit_abs = {
@@ -1592,14 +1697,12 @@ def fix_edge_through_node(plan, clearance=20):
 
         # If the (predicted) route is clear, leave the edge untouched —
         # keeps clean waypoint-free edges editable.
-        if not _seg_hits_any_node(all_pts, boxes, connected_ids,
-                                  container_children):
+        if not _seg_hits_any_node(all_pts, boxes, connected_ids):
             continue
 
         # Prefer a clean corridor route through the gap between the endpoints
         # (handles row-wrap connectors that cross a whole row of nodes).
-        corridor = _corridor_route(src, tgt, boxes, connected_ids,
-                                   container_children)
+        corridor = _corridor_route(src, tgt, boxes, connected_ids)
         if corridor:
             e_pt, n_pt, cwps = corridor
             elem["exit_point"] = e_pt
@@ -1623,9 +1726,6 @@ def fix_edge_through_node(plan, clearance=20):
             obstructor = None
             for box in boxes:
                 if box["id"] in connected_ids:
-                    continue
-                parent_id = container_children.get(box["id"])
-                if parent_id and parent_id in connected_ids:
                     continue
                 if _segment_intersects_box(
                     p["x"], p["y"], q["x"], q["y"], box, margin=0
@@ -1666,9 +1766,6 @@ def fix_edge_through_node(plan, clearance=20):
                     bq = bypass_pts[bi + 1]
                     for box in boxes:
                         if box["id"] in connected_ids:
-                            continue
-                        parent_id = container_children.get(box["id"])
-                        if parent_id and parent_id in connected_ids:
                             continue
                         if _segment_intersects_box(
                             bp["x"], bp["y"], bq["x"], bq["y"], box, margin=0
@@ -1865,6 +1962,8 @@ def fix_strip_waypoints(plan):
     elements = plan.get("elements", [])
     node_geom = _node_geom_lookup(elements)
     boxes, _, _ = _collect_boxes(elements)
+    anc = _ancestor_map(elements)
+    desc = _descendant_map(elements)
     fixes = 0
 
     for elem in elements:
@@ -1916,7 +2015,7 @@ def fix_strip_waypoints(plan):
         # Only strip if draw.io can route this cleanly:
         # 1) Already a straight line (aligned on one axis), or
         # 2) An L-bend where both segments are clear of nodes
-        connected = {elem["from"], elem["to"]}
+        connected = _edge_skip_ids(elem["from"], elem["to"], anc, desc)
         ex, ey = exit_abs["x"], exit_abs["y"]
         nx, ny = entry_abs["x"], entry_abs["y"]
 
@@ -1950,6 +2049,138 @@ def fix_strip_waypoints(plan):
 
 
 # ---------------------------------------------------------------------------
+# Pass 0: Enforce the grouping decided by graph_analysis
+# ---------------------------------------------------------------------------
+
+_GROUP_CONTAINER_STYLE = (
+    "rounded=1;whiteSpace=wrap;html=1;fillColor=#ececec;strokeColor=#333333;"
+    "strokeWidth=2;container=1;collapsible=0;verticalAlign=top;spacingTop=5;"
+    "fontSize=12;fontStyle=1;fontFamily=Inter,Helvetica,Arial,sans-serif;"
+)
+
+
+def _stack_vertical(cont, pad=14, gap=18, title=34):
+    """Lay a container's children out as a single vertical column, sized to fit.
+
+    Recurses into nested containers first, so a wide horizontally-laid container
+    (e.g. a Sync Dataset with three steps side by side) becomes a narrow tall
+    one — which lets it sit inside a grouping column without spanning the canvas.
+    """
+    children = cont.get("children", [])
+    if not children:
+        return
+    for c in children:
+        if c.get("children"):
+            _stack_vertical(c, pad, gap, title)
+    order = sorted(children, key=lambda c: (c.get("rel_y", 0), c.get("rel_x", 0)))
+    width = max(c["width"] for c in children)
+    y = title
+    for c in order:
+        c["rel_x"] = pad
+        c["rel_y"] = y
+        y += c["height"] + gap
+    cont["width"] = width + 2 * pad
+    cont["height"] = (y - gap) + pad
+
+
+def fix_enforce_groups(plan, spec, pad=16, gap=20, title=36):
+    """Force the layout to honor graph_analysis's fan-in grouping.
+
+    graph_analysis wraps a parallel fan-in into a ``"grouped": true`` container
+    and bundles its edges, but the LLM layout pass can ignore that and place the
+    members flat (the grouping then silently disappears). This pass re-applies
+    the structure deterministically on the already-laid-out plan: when a grouped
+    container is missing, **compact** its placed members into a vertical column —
+    reflowing any wide nested container narrow — and wrap them in the container,
+    then replace the per-member edges to each bundled target with the single
+    container→target edge recorded in the spec. Compacting (rather than wrapping
+    members where the LLM scattered them) keeps the container narrow so it can't
+    engulf unrelated nodes; the overlap pass that runs next nudges anything the
+    new column bumps into. Idempotent: if the layout already built the
+    container, it's left as-is.
+    """
+    if not spec:
+        return 0
+    grouped = [c for c in spec.get("containers", []) if c.get("grouped")]
+    if not grouped:
+        return 0
+
+    fixes = 0
+    for g in grouped:
+        gid = g["id"]
+        elements = plan.get("elements", [])
+        top = {e["id"]: e for e in elements
+               if e.get("type", "node") in ("node", "container")}
+        if gid in top:
+            continue  # layout already created the grouping container
+        member_ids = [m for m in g.get("children", []) if m in top]
+        if len(member_ids) < 2:
+            continue
+        members = [top[m] for m in member_ids]
+        member_set = set(member_ids)
+
+        ox = min(m["x"] for m in members) - pad
+        oy = min(m["y"] for m in members) - title
+
+        # Reflow any container member to a narrow vertical column, then stack
+        # every member vertically so the group is a compact column.
+        for m in members:
+            if m.get("children"):
+                _stack_vertical(m)
+        order = sorted(members, key=lambda m: (m["y"], m["x"]))
+        col_w = max(m["width"] for m in members)
+        children = []
+        ry = title
+        for m in order:
+            child = dict(m)
+            child["type"] = m.get("type", "node")
+            child["rel_x"] = pad
+            child["rel_y"] = ry
+            child.pop("x", None)
+            child.pop("y", None)
+            children.append(child)
+            ry += m["height"] + gap
+        container = {
+            "id": gid, "type": "container",
+            "x": ox, "y": oy,
+            "width": col_w + 2 * pad, "height": (ry - gap) + pad,
+            "label_html": f"<b>{g.get('label', gid)}</b>",
+            "style": _GROUP_CONTAINER_STYLE,
+            "children": children,
+        }
+        kept = [e for e in elements
+                if not (e.get("id") in member_set
+                        and e.get("type", "node") in ("node", "container"))]
+        nodes_part = [e for e in kept if e.get("type", "node") != "edge"]
+        edges_part = [e for e in kept if e.get("type", "node") == "edge"]
+        plan["elements"] = nodes_part + [container] + edges_part
+
+        # Bundle edges exactly as the spec recorded them for this group.
+        for se in spec.get("edges", []):
+            if se.get("from") != gid:
+                continue
+            tgt = se["to"]
+            plan["elements"] = [
+                el for el in plan["elements"]
+                if not (el.get("type") == "edge"
+                        and el.get("from") in member_set and el.get("to") == tgt)
+            ]
+            exists = any(el.get("type") == "edge" and el.get("from") == gid
+                         and el.get("to") == tgt for el in plan["elements"])
+            if not exists:
+                dashed = "dashed=1;dashPattern=8 4;" if se.get("style") == "dashed" else ""
+                plan["elements"].append({
+                    "id": f"e_{gid}_{tgt}", "type": "edge",
+                    "from": gid, "to": tgt, "label": se.get("label", ""),
+                    "style": ("edgeStyle=orthogonalEdgeStyle;rounded=1;"
+                              "strokeColor=#333333;strokeWidth=1.5;html=1;" + dashed),
+                })
+        fixes += 1
+
+    return fixes
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -1964,6 +2195,8 @@ def _run_passes(plan, corner_anchors=True, simplify=True, gravity=True):
         summary["gravity"] = fix_gravity(plan)
     # Snap decision-node anchors to diamond vertices before routes are built
     summary["diamond_anchors"] = fix_diamond_anchors(plan)
+    # Give anchorless edges a sensible facing anchor before routing
+    summary["assign_anchors"] = fix_assign_anchors(plan)
     summary["entry_exit"] = fix_entry_exit(plan)
     if corner_anchors:
         summary["corner_anchors"] = fix_corner_anchors(plan)
@@ -2007,8 +2240,12 @@ def _count_issues(plan):
     return len(result.get("errors", [])) + len(result.get("warnings", []))
 
 
-def fix(plan):
+def fix(plan, spec=None):
     """Apply all fix passes and return a summary.
+
+    When a graph spec is supplied, the grouping graph_analysis decided is first
+    enforced on the plan (independently of whether the LLM honored it), then the
+    routing/overlap passes run over the resulting structure.
 
     Three passes are beneficial-but-occasionally-risky: corner-anchor
     redistribution, route simplification, and gravity placement can each
@@ -2021,6 +2258,10 @@ def fix(plan):
     """
     import copy
     import itertools
+
+    # Re-apply the deterministic grouping before the routing passes so the
+    # structure is authoritative from graph_analysis, not the LLM layout.
+    enforce_count = fix_enforce_groups(plan, spec)
 
     best_plan = None
     best_summary = None
@@ -2039,6 +2280,7 @@ def fix(plan):
     plan.clear()
     plan.update(best_plan)
 
+    best_summary["enforce_groups"] = enforce_count
     best_summary["total"] = sum(best_summary.values())
     return best_summary
 
@@ -2056,10 +2298,32 @@ def main():
         if idx + 1 < len(sys.argv):
             output_path = sys.argv[idx + 1]
 
+    spec = None
+    spec_path = None
+    if "--spec" in sys.argv:
+        idx = sys.argv.index("--spec")
+        if idx + 1 < len(sys.argv):
+            spec_path = sys.argv[idx + 1]
+    else:
+        # Auto-discover the graph spec next to the layout plan (both live in
+        # artifacts/), so grouping is enforced even when --spec isn't passed.
+        import os
+        guess = os.path.join(os.path.dirname(os.path.abspath(input_path)),
+                             "graph-spec.json")
+        if os.path.exists(guess):
+            spec_path = guess
+    if spec_path:
+        try:
+            with open(spec_path) as f:
+                spec = json.load(f)
+        except (OSError, ValueError) as e:
+            print(f"warning: could not read graph spec {spec_path}: {e}",
+                  file=sys.stderr)
+
     with open(input_path) as f:
         plan = json.load(f)
 
-    summary = fix(plan)
+    summary = fix(plan, spec)
 
     with open(output_path, "w") as f:
         json.dump(plan, f, indent=2)
