@@ -7,6 +7,30 @@ import sys
 import xml.etree.ElementTree as ET
 
 
+def _capture_style(st, text):
+    """Record D2 style cues (shape, font, stroke, dash) from one source line.
+
+    Shared by the multi-line `| { … }` style-block loop and the single-line
+    `| { … }` form so both classify roles/callouts identically.
+    """
+    m = re.search(r'shape\s*:\s*([\w-]+)', text)
+    if m:
+        st["shape"] = m.group(1)
+    m = re.search(r'(?:style\.)?font\s*:\s*([\w-]+)', text)
+    if m:
+        st["font"] = m.group(1)
+    if re.search(r'(?:style\.)?stroke-dash', text):
+        st["stroke_dash"] = True
+    if re.search(r'(?:style\.)?double-border\s*:\s*true', text):
+        st["double_border"] = True
+    m = re.search(r'(?:style\.)?stroke-width\s*:\s*([\d.]+)', text)
+    if m:
+        st["stroke_width"] = m.group(1)
+    m = re.search(r'(?:style\.)?stroke\s*:\s*"?(#[0-9a-fA-F]+)"?', text)
+    if m:
+        st["stroke"] = m.group(1)
+
+
 def parse_d2(path):
     """Parse a D2 file into a graph spec."""
     with open(path) as f:
@@ -57,22 +81,7 @@ def parse_d2(path):
         if in_style_block:
             node = nodes.get(style_target_id)
             if node is not None:
-                st = node.setdefault("_style", {})
-                m = re.search(r'shape\s*:\s*([\w-]+)', stripped)
-                if m:
-                    st["shape"] = m.group(1)
-                m = re.search(r'(?:style\.)?font\s*:\s*([\w-]+)', stripped)
-                if m:
-                    st["font"] = m.group(1)
-                m = re.search(r'(?:style\.)?stroke-dash', stripped)
-                if m:
-                    st["stroke_dash"] = True
-                m = re.search(r'(?:style\.)?stroke-width\s*:\s*([\d.]+)', stripped)
-                if m:
-                    st["stroke_width"] = m.group(1)
-                m = re.search(r'(?:style\.)?stroke\s*:\s*"?(#[0-9a-fA-F]+)"?', stripped)
-                if m:
-                    st["stroke"] = m.group(1)
+                _capture_style(node.setdefault("_style", {}), stripped)
             if "}" in stripped:
                 in_style_block = False
                 block_depth -= 1
@@ -92,13 +101,24 @@ def parse_d2(path):
                 in_md_block = False
                 in_bold = False
                 last_md_bullet = False
-                if "{" in stripped:
-                    # A `| { … }` style block follows — keep depth, capture it.
+                if "{" in stripped and "}" not in stripped:
+                    # A multi-line `| { … }` style block follows — keep depth,
+                    # capture it line by line until the closing brace.
                     in_style_block = True
                     style_target_id = md_node_id
                 else:
-                    # Bare `|`: undo the depth increment from opening this node
-                    # so an open container doesn't keep swallowing later nodes.
+                    if "{" in stripped:
+                        # Single-line `| { … }`: capture the cues inline,
+                        # otherwise this line (and the closing `}`) is swallowed
+                        # and the brace bookkeeping leaks into the next line.
+                        if node is not None:
+                            _capture_style(
+                                node.setdefault("_style", {}),
+                                stripped[stripped.index("{") + 1:],
+                            )
+                    # Bare `|` (or fully-closed single-line block): undo the
+                    # depth increment from opening this node so an open container
+                    # doesn't keep swallowing later nodes.
                     block_depth -= 1
                     if block_depth <= 0:
                         current_block_id = None
