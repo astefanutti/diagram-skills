@@ -30,6 +30,10 @@ def parse_d2(path):
     in_md_block = False
     md_node_id = None
     last_edge_idx = -1
+    in_bold = False          # accumulating a multi-line **bold** title
+    bold_acc = ""
+    in_style_block = False   # inside the `| { ... }` style block after a |md
+    style_target_id = None
 
     for line in lines:
         stripped = line.strip()
@@ -46,32 +50,88 @@ def parse_d2(path):
                 in_edge_block = False
             continue
 
+        # Inside the `| { ... }` style block that follows a |md body.
+        # Capture styling cues (shape, font, stroke, dash) so roles and
+        # callouts can be classified, then close on the brace.
+        if in_style_block:
+            node = nodes.get(style_target_id)
+            if node is not None:
+                st = node.setdefault("_style", {})
+                m = re.search(r'shape\s*:\s*([\w-]+)', stripped)
+                if m:
+                    st["shape"] = m.group(1)
+                m = re.search(r'(?:style\.)?font\s*:\s*([\w-]+)', stripped)
+                if m:
+                    st["font"] = m.group(1)
+                m = re.search(r'(?:style\.)?stroke-dash', stripped)
+                if m:
+                    st["stroke_dash"] = True
+                m = re.search(r'(?:style\.)?stroke-width\s*:\s*([\d.]+)', stripped)
+                if m:
+                    st["stroke_width"] = m.group(1)
+                m = re.search(r'(?:style\.)?stroke\s*:\s*"?(#[0-9a-fA-F]+)"?', stripped)
+                if m:
+                    st["stroke"] = m.group(1)
+            if "}" in stripped:
+                in_style_block = False
+                block_depth -= 1
+                if block_depth <= 0:
+                    current_block_id = None
+                    block_depth = 0
+            continue
+
         # Inside a markdown (|md) content block — consume content only.
         # Never run node/edge matching on these lines: doing so is what
         # shattered callout blocks into phantom nodes (e.g. `judges: {…}`)
         # and turned `->` appearing in prose into spurious edges.
         if in_md_block:
+            node = nodes.get(md_node_id)
             if stripped.startswith("|"):
                 # closing pipe ends the markdown content.
                 in_md_block = False
-                if "{" not in stripped:
-                    # Bare `|` (no trailing `{ … }` style block): there is no
-                    # matching `}` to balance the depth increment from opening
-                    # this node, so undo it here. Otherwise an open container
-                    # would keep "swallowing" every following node as a child.
+                in_bold = False
+                if "{" in stripped:
+                    # A `| { … }` style block follows — keep depth, capture it.
+                    in_style_block = True
+                    style_target_id = md_node_id
+                else:
+                    # Bare `|`: undo the depth increment from opening this node
+                    # so an open container doesn't keep swallowing later nodes.
                     block_depth -= 1
                     if block_depth <= 0:
                         current_block_id = None
                         block_depth = 0
                 continue
-            if stripped.startswith("**"):
-                title = stripped.strip("*").strip()
-                if md_node_id in nodes:
-                    nodes[md_node_id]["label"] = title
+            # Continuation of a multi-line **bold** title (E).
+            if in_bold:
+                if stripped.endswith("**"):
+                    bold_acc += " " + stripped[:-2].strip()
+                    in_bold = False
+                    if node is not None:
+                        _set_md_title(node, bold_acc)
+                else:
+                    bold_acc += " " + stripped
+                continue
+            # Bold title — extract the **…** span so trailing text (F) and
+            # inline content don't leak into the label.
+            m = re.search(r'\*\*(.+?)\*\*', stripped)
+            if m:
+                if node is not None:
+                    _set_md_title(node, m.group(1))
+                trailing = stripped[m.end():].strip()
+                if trailing and node is not None:
+                    node["details"].append(trailing)
+            elif stripped.startswith("**"):
+                # Opening ** with no closing on this line → multi-line title.
+                in_bold = True
+                bold_acc = stripped[2:].strip()
             elif stripped.startswith("- "):
-                bullet = stripped[2:].strip()
-                if md_node_id in nodes:
-                    nodes[md_node_id]["details"].append(bullet)
+                if node is not None:
+                    node["details"].append(stripped[2:].strip())
+            else:
+                # Plain content line — callout body (preserve it).
+                if node is not None:
+                    node.setdefault("_raw", []).append(stripped)
             continue
 
         # Edge chain: a -> b -> c or a <-> b, with optional label/style
@@ -222,6 +282,14 @@ def parse_d2(path):
         # ignored — only the declarations matched above contribute
         # nodes/edges/containers.
 
+    # Pull callouts out of nodes[]; refine roles from styling + title.
+    callouts = _extract_callouts(nodes, edges, containers)
+    for node in nodes.values():
+        node["role"] = _refine_role(node, edges)
+    for node in nodes.values():
+        node.pop("_style", None)
+        node.pop("_raw", None)
+
     # Mark back-edges
     node_order = list(nodes.keys())
     for edge in edges:
@@ -242,7 +310,7 @@ def parse_d2(path):
         "nodes": list(nodes.values()),
         "edges": edges,
         "containers": list(containers.values()),
-        "callouts": [],
+        "callouts": callouts,
     }
 
 
@@ -316,6 +384,91 @@ def parse_drawio(path):
         "containers": list(containers.values()),
         "callouts": [],
     }
+
+
+def _set_md_title(node, raw):
+    """Set a node's label from a bold title, preserving extra lines.
+
+    A `<br>` (or a title wrapped across source lines) splits into a first-line
+    label plus leading detail lines, so multi-line titles aren't truncated.
+    """
+    parts = [p.strip() for p in re.split(r'<br\s*/?>', raw) if p.strip()]
+    if not parts:
+        return
+    node["label"] = parts[0]
+    for extra in reversed(parts[1:]):
+        node["details"].insert(0, extra)
+
+
+def _refine_role(node, edges):
+    """Assign a role from styling cues + the parsed title (D2 path).
+
+    Styling beats keyword-guessing: a diamond is a decision, a dashed border
+    is external/optional, a `/command` title is an entry. Output is only
+    inferred for a sink node (no outgoing edges) to avoid mislabelling
+    writing steps like 'gen-report' or 'log-results' as outputs.
+    """
+    st = node.get("_style", {})
+    nid = node["id"]
+    label = (node.get("label") or "").strip()
+    combined = f"{nid} {label}".lower()
+
+    # Styling beats the /command heuristic: a dashed `/eval-run` is a
+    # downstream-skill reference (external), not the diagram's entry point.
+    if st.get("shape") == "diamond" or label.endswith("?"):
+        return "decision"
+    if st.get("stroke_dash"):
+        return "external"
+    if label.startswith("/") or nid.startswith("/") or "--" in combined:
+        return "entry"
+    if any(w in combined for w in ["server", "database", "api", "mlflow"]):
+        return "external"
+    has_outgoing = any(e["from"] == nid for e in edges)
+    if not has_outgoing and any(w in label.lower() for w in ["report", "output"]):
+        return "output"
+    return "processing"
+
+
+def _extract_callouts(nodes, edges, containers):
+    """Pull callout-styled |md nodes out of nodes[] into callouts[].
+
+    A callout uses a monospace font (code/file-tree content) or a light, thin
+    border. Its raw multi-line body is preserved as content, it's linked to
+    whatever node points at it (attached_to), and the connector edge is
+    dropped (the link is represented by attached_to).
+    """
+    callouts = []
+    callout_ids = set()
+    for nid, node in list(nodes.items()):
+        st = node.get("_style", {})
+        light_border = (st.get("stroke", "").lower().startswith("#bb")
+                        and str(st.get("stroke_width", "")) in ("1", "1.0"))
+        if st.get("font") == "mono" or light_border:
+            raw = node.get("_raw", [])
+            callouts.append({
+                "id": nid,
+                "content": "\n".join(raw) if raw else (node.get("label") or nid),
+                "attached_to": None,
+                "type": "listing",
+            })
+            callout_ids.add(nid)
+            del nodes[nid]
+
+    for c in callouts:
+        for e in edges:
+            if e["to"] == c["id"] and e["from"] not in callout_ids:
+                c["attached_to"] = e["from"]
+                break
+            if e["from"] == c["id"] and e["to"] not in callout_ids:
+                c["attached_to"] = e["to"]
+                break
+
+    edges[:] = [e for e in edges
+                if e["from"] not in callout_ids and e["to"] not in callout_ids]
+    for cont in containers.values():
+        cont["children"] = [ch for ch in cont["children"]
+                            if ch not in callout_ids]
+    return callouts
 
 
 def _guess_role(node_id, label):
