@@ -133,6 +133,19 @@ Rules:
 
 The test: if you can draw a large empty rectangle (no nodes, only edges) between a fan-out column and its shared fan-in target, the target is too far away — pull it in.
 
+## Rule 5c: Two shared sinks → opposite sides (avoid the double-fan-in crossing)
+
+When the **same** group of N operations each connect to **two** shared targets (e.g. every operation links to both a Report and an external MLflow Server), placing both targets on the **same side** of the operations column forces edge crossings — the edges to the near target cross the edges to the far one. This subgraph (N sources × 2 sinks) is planar, so the crossings are avoidable.
+
+Place the two sinks on **opposite sides** of the operations group:
+- one to the **right** of the column, the other to the **left** (or one **above**, one **below** for a horizontal source row). Each operation then sends one edge left and one edge right — no crossings.
+
+Critically, "opposite side" must be free of **edges**, not just nodes. The side an incoming pipeline feeds from (e.g. a dispatch node fanning into the operations from the left) is full of fan-out edges; dropping a sink there trades hub-vs-hub crossings for sink-vs-fan-out crossings. So:
+- If the operations are fed from the left, keep one sink on the right and route the pipeline so the **other side is genuinely clear** — e.g. enter the operations from the **top** (so the left and right are both free for the two sinks), or
+- **Group the operations** into a container and connect the two sinks to the *container* (one bundled edge per sink, on opposite sides) instead of N separate edges to each sink — this collapses the 2N fan-in edges to 2 and removes the crossings entirely. Use this when the per-operation edge labels aren't essential.
+
+If neither is possible (sinks boxed in on the same side), separate them vertically and accept the residual **perpendicular** crossings (one edge horizontal, one vertical) — these read as a clean X and are the least disruptive crossing, acceptable per the graceful-degradation guidance.
+
 ## Rule 6: Aspect Ratio and Canvas Sizing
 
 Choose canvas dimensions based on the graph topology:
