@@ -1644,6 +1644,83 @@ def fix_spikes(plan, axis_threshold=3):
 # Pass 5: Strip redundant waypoints for editability
 # ---------------------------------------------------------------------------
 
+def fix_dedup_waypoints(plan, tol=1.5):
+    """Drop redundant waypoints: exact duplicates and collinear midpoints.
+
+    Repeated passes (orthogonal, reroute, simplify) can stack several copies of
+    the same corner, or leave a point sitting on a straight segment between its
+    neighbors. Both are pure noise — they bloat the XML and make routes harder
+    to read without changing the rendered path. Removing a duplicate or a point
+    that lies on the line through its neighbors is geometry-preserving, so this
+    pass can never alter validator issue counts.
+
+    The exit/entry anchors are folded in as virtual endpoints so a waypoint
+    collinear with an anchor (e.g. three points along one straight segment) is
+    also collapsed.
+    """
+    elements = plan.get("elements", [])
+    node_geom = _node_geom_lookup(elements)
+    fixes = 0
+
+    def _collinear(a, b, c):
+        # b lies on segment a→c when the triangle area (cross product) is ~0.
+        cross = (b["x"] - a["x"]) * (c["y"] - a["y"]) - \
+                (b["y"] - a["y"]) * (c["x"] - a["x"])
+        return abs(cross) <= tol * max(
+            1.0,
+            abs(c["x"] - a["x"]) + abs(c["y"] - a["y"]),
+        )
+
+    for elem in elements:
+        if elem.get("type") != "edge":
+            continue
+        wps = list(elem.get("waypoints") or [])
+        if not wps:
+            continue
+
+        src = node_geom.get(elem["from"])
+        tgt = node_geom.get(elem["to"])
+        ep = elem.get("exit_point")
+        np_ = elem.get("entry_point")
+        if not (src and tgt and ep and np_):
+            # Without anchors, still drop exact duplicates conservatively.
+            chain = wps
+            endpoints = False
+        else:
+            chain = [{
+                "x": src["x"] + ep["x"] * src["width"],
+                "y": src["y"] + ep["y"] * src["height"],
+            }] + wps + [{
+                "x": tgt["x"] + np_["x"] * tgt["width"],
+                "y": tgt["y"] + np_["y"] * tgt["height"],
+            }]
+            endpoints = True
+
+        # 1) Collapse consecutive exact duplicates.
+        deduped = [chain[0]]
+        for pt in chain[1:]:
+            prev = deduped[-1]
+            if abs(pt["x"] - prev["x"]) <= tol and abs(pt["y"] - prev["y"]) <= tol:
+                continue
+            deduped.append(pt)
+
+        # 2) Drop interior points collinear with their neighbors.
+        cleaned = [deduped[0]]
+        for i in range(1, len(deduped) - 1):
+            if _collinear(cleaned[-1], deduped[i], deduped[i + 1]):
+                continue
+            cleaned.append(deduped[i])
+        if len(deduped) > 1:
+            cleaned.append(deduped[-1])
+
+        new_wps = cleaned[1:-1] if endpoints else cleaned
+        if len(new_wps) != len(wps):
+            elem["waypoints"] = [{"x": p["x"], "y": p["y"]} for p in new_wps]
+            fixes += 1
+
+    return fixes
+
+
 def fix_strip_waypoints(plan):
     """Remove waypoints that draw.io's orthogonal router handles automatically.
 
@@ -1776,6 +1853,8 @@ def _run_passes(plan, corner_anchors=True, simplify=True, gravity=True):
     summary["anchor_alignment_pass2"] = fix_anchor_alignment(plan)
     summary["orthogonal_pass2"] = fix_orthogonal(plan)
     summary["spikes_pass2"] = fix_spikes(plan)
+    # Collapse duplicate/collinear waypoints stacked up by the passes above
+    summary["dedup_waypoints"] = fix_dedup_waypoints(plan)
     # Strip redundant waypoints — makes edges editable in draw.io
     summary["strip_waypoints"] = fix_strip_waypoints(plan)
     # Compact empty bands last, when the issue count reflects the final
