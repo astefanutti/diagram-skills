@@ -1015,6 +1015,96 @@ def fix_container_layout(plan, bottom_pad=18, side_pad=18):
 
 
 # ---------------------------------------------------------------------------
+# Pass 1d: Gravity — pull stranded nodes toward their connections
+# ---------------------------------------------------------------------------
+
+def fix_gravity(plan, strand=40, margin=15):
+    """Pull a node that's stranded far from its connections back toward them.
+
+    A node placed well outside the span of its connected neighbors (e.g. an
+    external-service box parked at the top while everything it links to sits
+    in the middle) produces long, bent edges. For each plain node whose center
+    falls outside its neighbors' range on an axis (by more than `strand`),
+    move it toward the median of its neighbors on that axis — as far as a
+    collision-free position allows. Nodes already within their neighbors'
+    range are left untouched, so the semantic column structure is preserved.
+    Connected edges are re-routed by the later passes.
+    """
+    elements = plan.get("elements", [])
+    node_geom = _node_geom_lookup(elements)
+    boxes, container_ids, container_child_ids = _collect_boxes(elements)
+
+    neighbors = {}
+    for e in elements:
+        if e.get("type") != "edge":
+            continue
+        neighbors.setdefault(e["from"], set()).add(e["to"])
+        neighbors.setdefault(e["to"], set()).add(e["from"])
+
+    fixes = 0
+    for elem in elements:
+        # Only move plain top-level nodes — containers and their children
+        # carry internal structure that shouldn't be yanked around.
+        if elem.get("type") != "node" or elem["id"] in container_child_ids:
+            continue
+        nid = elem["id"]
+        nbr = [node_geom[n] for n in neighbors.get(nid, ())
+               if n in node_geom and n != nid]
+        # Need 2+ neighbours for "stranded outside their span" to be
+        # meaningful — otherwise leaf nodes get yanked toward their one
+        # neighbour and the layout collapses.
+        if len(nbr) < 2:
+            continue
+
+        cx = elem["x"] + elem["width"] / 2
+        cy = elem["y"] + elem["height"] / 2
+        xs = sorted(n["x"] + n["width"] / 2 for n in nbr)
+        ys = sorted(n["y"] + n["height"] / 2 for n in nbr)
+        medx = xs[len(xs) // 2]
+        medy = ys[len(ys) // 2]
+
+        # Only centre on the axis the neighbours actually SPAN. On the axis
+        # where they're clustered (e.g. a vertical source column), the node's
+        # offset is the natural fan-in direction — pulling it there would drag
+        # the node on top of its neighbours.
+        SPAN_MIN = 60
+        tx, ty = cx, cy
+        if xs[-1] - xs[0] >= SPAN_MIN and (cx < xs[0] - strand or
+                                           cx > xs[-1] + strand):
+            tx = medx
+        if ys[-1] - ys[0] >= SPAN_MIN and (cy < ys[0] - strand or
+                                           cy > ys[-1] + strand):
+            ty = medy
+        if abs(tx - cx) < 1 and abs(ty - cy) < 1:
+            continue
+
+        # Move as far toward the target as a collision-free spot allows
+        for frac in (1.0, 0.85, 0.7, 0.55, 0.4, 0.25):
+            ncx = cx + (tx - cx) * frac
+            ncy = cy + (ty - cy) * frac
+            nxx = ncx - elem["width"] / 2
+            nyy = ncy - elem["height"] / 2
+            if nxx < margin or nyy < margin:
+                continue
+            box = {"id": nid, "x": nxx, "y": nyy,
+                   "w": elem["width"], "h": elem["height"]}
+            collide = False
+            for b in boxes:
+                if b["id"] == nid or b["id"] in container_child_ids:
+                    continue
+                if _overlaps(box, b, margin):
+                    collide = True
+                    break
+            if not collide:
+                elem["x"] = nxx
+                elem["y"] = nyy
+                fixes += 1
+                break
+
+    return fixes
+
+
+# ---------------------------------------------------------------------------
 # Pass 2: Node overlap resolution
 # ---------------------------------------------------------------------------
 
@@ -1520,12 +1610,15 @@ def fix_strip_waypoints(plan):
 # Main
 # ---------------------------------------------------------------------------
 
-def _run_passes(plan, corner_anchors=True, simplify=True):
+def _run_passes(plan, corner_anchors=True, simplify=True, gravity=True):
     """Run the full fix pipeline on a plan. Returns a summary dict."""
     summary = {}
 
     # Tidy container interiors first — child moves affect edge anchors
     summary["container_layout"] = fix_container_layout(plan)
+    # Pull stranded nodes toward their connections before routing edges
+    if gravity:
+        summary["gravity"] = fix_gravity(plan)
     summary["entry_exit"] = fix_entry_exit(plan)
     if corner_anchors:
         summary["corner_anchors"] = fix_corner_anchors(plan)
@@ -1570,26 +1663,28 @@ def _count_issues(plan):
 def fix(plan):
     """Apply all fix passes and return a summary.
 
-    Two passes are beneficial-but-occasionally-risky: corner-anchor
-    redistribution and route simplification can each trade a visual win for a
-    real defect (a new crossing or edge-through-node) that the validator
-    doesn't always offset. So we run the whole pipeline for each on/off
-    combination of the two and keep whichever yields the fewest validator
-    issues. Combinations are tried most-features-first and ties go to the
-    earlier (more-featured) combination, preserving cosmetic improvements at
-    no measurable cost.
+    Three passes are beneficial-but-occasionally-risky: corner-anchor
+    redistribution, route simplification, and gravity placement can each
+    trade a visual win for a real defect (a new crossing or edge-through-node)
+    that the validator doesn't always offset. So we run the whole pipeline for
+    each on/off combination of the three and keep whichever yields the fewest
+    validator issues. Combinations are tried most-features-first and ties go
+    to the earlier (more-featured) combination, preserving cosmetic
+    improvements at no measurable cost.
     """
     import copy
+    import itertools
 
     best_plan = None
     best_summary = None
     best_issues = None
-    for corner_anchors, simplify in (
-        (True, True), (True, False), (False, True), (False, False)
+    # most-features-first so ties keep the richer result
+    for corner_anchors, simplify, gravity in itertools.product(
+        (True, False), repeat=3
     ):
         trial = copy.deepcopy(plan)
         summary = _run_passes(trial, corner_anchors=corner_anchors,
-                              simplify=simplify)
+                              simplify=simplify, gravity=gravity)
         issues = _count_issues(trial)
         if best_issues is None or issues < best_issues:
             best_plan, best_summary, best_issues = trial, summary, issues
