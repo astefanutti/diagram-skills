@@ -30,31 +30,31 @@ def validate(plan):
 
     canvas = plan.get("canvas", {"width": 1920, "height": 1080})
 
-    # Collect all node bounding boxes (including container children)
+    # Collect all node bounding boxes (including nested container children).
+    # Recurse so deeper nesting composes absolute coords; every box with
+    # children is a container and each descendant id is a container-child.
     boxes = []
     container_children = set()
     container_ids = set()
+
+    def _walk_boxes(elem, abs_x, abs_y):
+        boxes.append({
+            "id": elem["id"],
+            "x": abs_x,
+            "y": abs_y,
+            "w": elem["width"],
+            "h": elem["height"],
+        })
+        kids = elem.get("children", [])
+        if kids:
+            container_ids.add(elem["id"])
+            for child in kids:
+                container_children.add(child["id"])
+                _walk_boxes(child, abs_x + child["rel_x"], abs_y + child["rel_y"])
+
     for elem in elements:
-        etype = elem.get("type", "node")
-        if etype in ("node", "container"):
-            boxes.append({
-                "id": elem["id"],
-                "x": elem["x"],
-                "y": elem["y"],
-                "w": elem["width"],
-                "h": elem["height"],
-            })
-            if etype == "container":
-                container_ids.add(elem["id"])
-                for child in elem.get("children", []):
-                    container_children.add(child["id"])
-                    boxes.append({
-                        "id": child["id"],
-                        "x": elem["x"] + child["rel_x"],
-                        "y": elem["y"] + child["rel_y"],
-                        "w": child["width"],
-                        "h": child["height"],
-                    })
+        if elem.get("type", "node") in ("node", "container"):
+            _walk_boxes(elem, elem["x"], elem["y"])
 
     # Check node overlaps (10px margin), skip container-child pairs
     margin = 10
@@ -110,12 +110,12 @@ def validate(plan):
                 f"bottom edge at {bottom} > {canvas['height']}"
             )
 
-    # Check container bounds (children within container with padding)
+    # Check container bounds (children within container with padding).
+    # Recurses so a nested container's own children are checked against it too.
     container_padding = 10
-    for elem in elements:
-        if elem.get("type") != "container":
-            continue
-        for child in elem.get("children", []):
+
+    def _check_bounds(cont):
+        for child in cont.get("children", []):
             cx = child["rel_x"]
             cy = child["rel_y"]
             cw = child["width"]
@@ -123,29 +123,35 @@ def validate(plan):
             if cx < 0 or cy < 0:
                 errors.append(
                     f"Container child {child['id']} has negative offset "
-                    f"in container {elem['id']}"
+                    f"in container {cont['id']}"
                 )
-            if cx + cw > elem["width"]:
+            if cx + cw > cont["width"]:
                 errors.append(
                     f"Container child {child['id']} overflows container "
-                    f"{elem['id']} width: {cx + cw} > {elem['width']}"
+                    f"{cont['id']} width: {cx + cw} > {cont['width']}"
                 )
-            if cy + ch > elem["height"]:
+            if cy + ch > cont["height"]:
                 errors.append(
                     f"Container child {child['id']} overflows container "
-                    f"{elem['id']} height: {cy + ch} > {elem['height']}"
+                    f"{cont['id']} height: {cy + ch} > {cont['height']}"
                 )
             if cx < container_padding:
                 warnings.append(
                     f"Container child {child['id']} has only {cx}px left "
-                    f"padding in {elem['id']} (min {container_padding}px)"
+                    f"padding in {cont['id']} (min {container_padding}px)"
                 )
-            if elem["width"] - (cx + cw) < container_padding:
+            if cont["width"] - (cx + cw) < container_padding:
                 warnings.append(
                     f"Container child {child['id']} has only "
-                    f"{elem['width'] - cx - cw:.0f}px right padding in "
-                    f"{elem['id']} (min {container_padding}px)"
+                    f"{cont['width'] - cx - cw:.0f}px right padding in "
+                    f"{cont['id']} (min {container_padding}px)"
                 )
+            if child.get("children"):
+                _check_bounds(child)
+
+    for elem in elements:
+        if elem.get("type") == "container":
+            _check_bounds(elem)
 
     # Build lookup for node geometry
     node_geom = {}
@@ -206,30 +212,41 @@ def validate(plan):
                     f"{eid_b} segment ({bx1},{by1})->({bx2},{by2})"
                 )
 
-    # Build container parent→children map for skip logic
-    container_children = {}
+    # Build child→parent map across all nesting levels for skip logic.
+    parent_of = {}
+
+    def _map_parents(cont):
+        for child in cont.get("children", []):
+            cid = child.get("id", child) if isinstance(child, dict) else child
+            parent_of[cid] = cont["id"]
+            if isinstance(child, dict) and child.get("children"):
+                _map_parents(child)
+
     for elem in elements:
         if elem.get("type") == "container":
-            for child in elem.get("children", []):
-                child_id = child.get("id", child) if isinstance(child, dict) else child
-                container_children[child_id] = elem["id"]
+            _map_parents(elem)
+
+    def _ancestors(nid):
+        chain, p = [], parent_of.get(nid)
+        while p is not None and p not in chain:
+            chain.append(p)
+            p = parent_of.get(p)
+        return chain
 
     # Check edge-node clearance (crossing and near-miss)
     clearance_margin = 15
     for eid, sx1, sy1, sx2, sy2 in edge_segments:
         src_id, _, tgt_id = eid.partition("->")
-        # Skip the parent container if both endpoints are its children
+        # Skip the endpoints and every container enclosing either endpoint: an
+        # edge that starts/ends inside a container exits via its border, so it
+        # must not be flagged against that container or its descendants.
         skip_ids = {src_id, tgt_id}
-        src_parent = container_children.get(src_id)
-        tgt_parent = container_children.get(tgt_id)
-        if src_parent and src_parent == tgt_parent:
-            skip_ids.add(src_parent)
+        skip_ids |= set(_ancestors(src_id)) | set(_ancestors(tgt_id))
         for box in boxes:
             if box["id"] in skip_ids:
                 continue
-            # Skip children of containers the edge connects to
-            parent_id = container_children.get(box["id"])
-            if parent_id and parent_id in skip_ids:
+            # Skip descendants of any container the edge connects to/encloses.
+            if any(a in skip_ids for a in _ancestors(box["id"])):
                 continue
             if _segment_intersects_box(sx1, sy1, sx2, sy2, box, margin=0):
                 errors.append(
