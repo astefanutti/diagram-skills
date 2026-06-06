@@ -725,12 +725,16 @@ def fix_orthogonal(plan):
         new_wps = []
         changed = False
 
+        es = _anchor_side(ep)
+        ns = _anchor_side(np_)
+
         connected_ids = {elem["from"], elem["to"]}
         src_parent = container_children_map.get(elem["from"])
         tgt_parent = container_children_map.get(elem["to"])
         if src_parent and src_parent == tgt_parent:
             connected_ids.add(src_parent)
 
+        last_i = len(all_pts) - 2
         for i in range(len(all_pts) - 1):
             p = all_pts[i]
             q = all_pts[i + 1]
@@ -743,31 +747,52 @@ def fix_orthogonal(plan):
             dy = abs(q["y"] - p["y"])
 
             if dx > 1 and dy > 1:
-                # Diagonal detected — insert an L-bend corner
-                # Option A: (p.x, q.y) — horizontal then vertical
-                # Option B: (q.x, p.y) — vertical then horizontal
+                # Diagonal — insert an L corner.
+                #   corner_a = (p.x, q.y): p→corner VERTICAL, corner→q horizontal
+                #   corner_b = (q.x, p.y): p→corner HORIZONTAL, corner→q vertical
                 corner_a = {"x": p["x"], "y": q["y"]}
                 corner_b = {"x": q["x"], "y": p["y"]}
-                # Pick the corner that doesn't cross any node
-                a_clear = True
-                b_clear = True
-                for box in boxes:
-                    if box["id"] in connected_ids:
-                        continue
-                    if _segment_intersects_box(
-                        p["x"], p["y"], corner_a["x"], corner_a["y"], box
-                    ) or _segment_intersects_box(
-                        corner_a["x"], corner_a["y"], q["x"], q["y"], box
-                    ):
-                        a_clear = False
-                    if _segment_intersects_box(
-                        p["x"], p["y"], corner_b["x"], corner_b["y"], box
-                    ) or _segment_intersects_box(
-                        corner_b["x"], corner_b["y"], q["x"], q["y"], box
-                    ):
-                        b_clear = False
 
-                corner = corner_a if a_clear else corner_b if b_clear else corner_a
+                # Prefer the corner whose segment touching an anchor is
+                # perpendicular to that anchor's side — a left/right exit must
+                # leave horizontally (corner_b), not slide down its own edge
+                # (corner_a); a left/right entry must arrive horizontally
+                # (corner_a). Otherwise default to corner_a.
+                pref = None
+                if i == 0 and es in ("left", "right"):
+                    pref = corner_b
+                elif i == 0 and es in ("top", "bottom"):
+                    pref = corner_a
+                elif i == last_i and ns in ("left", "right"):
+                    pref = corner_a
+                elif i == last_i and ns in ("top", "bottom"):
+                    pref = corner_b
+
+                def _clear(cn, margin=0):
+                    for box in boxes:
+                        if box["id"] in connected_ids:
+                            continue
+                        if _segment_intersects_box(
+                            p["x"], p["y"], cn["x"], cn["y"], box, margin
+                        ) or _segment_intersects_box(
+                            cn["x"], cn["y"], q["x"], q["y"], box, margin
+                        ):
+                            return False
+                    return True
+
+                # Honor the anchor-aware preference only when it also keeps the
+                # validator's 15px clearance — otherwise a perpendicular exit
+                # that skims a neighbor trades a tangential start for a
+                # near-miss. When it can't, fall back to the original
+                # intersection-only choice (corner_a default).
+                if pref is not None and _clear(pref, margin=15):
+                    corner = pref
+                elif _clear(corner_a):
+                    corner = corner_a
+                elif _clear(corner_b):
+                    corner = corner_b
+                else:
+                    corner = pref or corner_a
                 new_wps.append(corner)
                 changed = True
 
