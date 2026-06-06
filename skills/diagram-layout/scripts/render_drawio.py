@@ -53,39 +53,38 @@ def render(plan):
     cell_id = 2
     id_map = {}  # original → safe ID mapping for reserved IDs
 
+    def _emit_box(elem, parent, top_level):
+        """Emit a node/container cell and recurse into its children.
+
+        Top-level boxes are positioned with absolute x/y; children use rel_x/
+        rel_y relative to their parent (draw.io child geometry is parent-
+        relative), so a container nested inside another renders correctly with
+        all of its descendants — the loop used to drop a nested container's
+        children entirely.
+        """
+        nonlocal cell_id
+        cid = _safe_id(elem.get("id", str(cell_id)), id_map)
+        children = elem.get("children", [])
+        is_container = elem.get("type") == "container" or bool(children)
+        default_style = (_default_container_style() if is_container
+                         else _default_node_style())
+        gx = elem["x"] if top_level else elem["rel_x"]
+        gy = elem["y"] if top_level else elem["rel_y"]
+        cells.append(_vertex(
+            cid, elem.get("label_html", ""),
+            gx, gy, elem["width"], elem["height"],
+            elem.get("style", default_style),
+            parent=parent,
+        ))
+        cell_id = max(cell_id, int(cid) + 1) if cid.isdigit() else cell_id + 1
+        for child in children:
+            _emit_box(child, cid, top_level=False)
+
     for elem in plan.get("elements", []):
         etype = elem.get("type", "node")
 
-        if etype == "container":
-            cid = _safe_id(elem.get("id", str(cell_id)), id_map)
-            cells.append(_vertex(
-                cid, elem.get("label_html", ""),
-                elem["x"], elem["y"], elem["width"], elem["height"],
-                elem.get("style", _default_container_style()),
-                parent="1",
-            ))
-            cell_id = max(cell_id, int(cid) + 1) if cid.isdigit() else cell_id + 1
-
-            for child in elem.get("children", []):
-                child_id = _safe_id(child.get("id", str(cell_id)), id_map)
-                cells.append(_vertex(
-                    child_id, child.get("label_html", ""),
-                    child["rel_x"], child["rel_y"],
-                    child["width"], child["height"],
-                    child.get("style", _default_node_style()),
-                    parent=cid,
-                ))
-                cell_id = max(cell_id, int(child_id) + 1) if child_id.isdigit() else cell_id + 1
-
-        elif etype == "node":
-            nid = _safe_id(elem.get("id", str(cell_id)), id_map)
-            cells.append(_vertex(
-                nid, elem.get("label_html", ""),
-                elem["x"], elem["y"], elem["width"], elem["height"],
-                elem.get("style", _default_node_style()),
-                parent="1",
-            ))
-            cell_id = max(cell_id, int(nid) + 1) if nid.isdigit() else cell_id + 1
+        if etype in ("container", "node"):
+            _emit_box(elem, parent="1", top_level=True)
 
         elif etype == "edge":
             eid = _safe_id(elem.get("id", str(cell_id)), id_map)
