@@ -400,13 +400,21 @@ def _set_md_title(node, raw):
         node["details"].insert(0, extra)
 
 
+# Trailing service nouns that strongly mark a node as an external service.
+# Kept conservative — these are rarely the object of an action verb, so a
+# suffix match won't mislabel steps like "Clear Cache" or "Drain Queue".
+_SERVICE_WORDS = ("server", "database", "registry", "gateway", "datastore")
+
+
 def _refine_role(node, edges):
     """Assign a role from styling cues + the parsed title (D2 path).
 
     Styling beats keyword-guessing: a diamond is a decision, a dashed border
-    is external/optional, a `/command` title is an entry. Output is only
-    inferred for a sink node (no outgoing edges) to avoid mislabelling
-    writing steps like 'gen-report' or 'log-results' as outputs.
+    is external/optional, a `/command` title is an entry. The external keyword
+    fallback matches only a service NOUN at the end of the name ("MLflow
+    Server"), never a substring ("Verify MLflow" is a processing step, not the
+    server). Output is only inferred for a sink node (no outgoing edges), so
+    writing steps like 'gen-report' or 'log-results' stay processing.
     """
     st = node.get("_style", {})
     nid = node["id"]
@@ -421,7 +429,10 @@ def _refine_role(node, edges):
         return "external"
     if label.startswith("/") or nid.startswith("/") or "--" in combined:
         return "entry"
-    if any(w in combined for w in ["server", "database", "api", "mlflow"]):
+    # Last-resort external: the node IS a service — its name ends in a service
+    # noun (suffix, not substring) so "Verify MLflow" doesn't trip it.
+    words = re.split(r"[\s/_-]+", combined.strip())
+    if words and words[-1] in _SERVICE_WORDS:
         return "external"
     has_outgoing = any(e["from"] == nid for e in edges)
     if not has_outgoing and any(w in label.lower() for w in ["report", "output"]):
@@ -472,11 +483,16 @@ def _extract_callouts(nodes, edges, containers):
 
 
 def _guess_role(node_id, label):
-    """Heuristic role assignment."""
+    """Heuristic role assignment (drawio path / fallback).
+
+    External matches only a trailing service noun ("MLflow Server"), never a
+    substring, so an action like "Verify MLflow" stays processing.
+    """
     combined = f"{node_id} {label}".lower()
     if combined.startswith("/") or "--" in combined:
         return "entry"
-    if any(w in combined for w in ["server", "database", "api", "mlflow"]):
+    words = re.split(r"[\s/_-]+", combined.strip())
+    if words and words[-1] in _SERVICE_WORDS:
         return "external"
     if any(w in combined for w in ["report", "output", "result", "extracted"]):
         return "output"
