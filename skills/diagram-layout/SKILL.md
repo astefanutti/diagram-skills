@@ -51,7 +51,9 @@ If no input file, construct the graph spec directly from the user's natural lang
 }
 ```
 
-Node roles: `entry`, `processing`, `decision`, `output`, `external`, `optional`.
+Node roles: `entry`, `processing`, `decision`, `output`, `external`, `optional`, `llm`.
+
+`llm` marks an LLM/agent reasoning step (parsed from a `style.double-border` cue). Style it with the emphasized node style (see coordinate-system.md) so the emphasis is automatic — don't leave it as a plain processing box.
 
 ### Step 2: Analyze Topology
 

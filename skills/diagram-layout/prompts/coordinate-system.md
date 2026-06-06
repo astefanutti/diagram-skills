@@ -71,6 +71,11 @@ rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;strokeWid
 # Emphasized node (external systems, key outputs)
 rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#333333;strokeWidth=2;arcSize=10;verticalAlign=middle;fontSize=11;fontFamily=Inter,Helvetica,Arial,sans-serif;
 
+# LLM / agent reasoning step (role `llm`, parsed from a double-border cue) —
+# emphasized fill plus a thicker stroke so reasoning steps stand out from
+# ordinary processing boxes.
+rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#333333;strokeWidth=3;arcSize=10;verticalAlign=top;spacingTop=5;fontSize=11;fontFamily=Inter,Helvetica,Arial,sans-serif;
+
 # Optional/external node (dashed border)
 rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#333333;strokeWidth=2;arcSize=10;dashed=1;dashPattern=8 4;verticalAlign=middle;fontSize=11;fontFamily=Inter,Helvetica,Arial,sans-serif;
 

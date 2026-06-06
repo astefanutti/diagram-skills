@@ -331,15 +331,11 @@ def parse_d2(path):
         # ignored — only the declarations matched above contribute
         # nodes/edges/containers.
 
-    # Pull callouts out of nodes[]; refine roles from styling + title.
+    # Pull callouts out of nodes[] first (they aren't real graph nodes).
     callouts = _extract_callouts(nodes, edges, containers)
-    for node in nodes.values():
-        node["role"] = _refine_role(node, edges)
-    for node in nodes.values():
-        node.pop("_style", None)
-        node.pop("_raw", None)
 
-    # Mark back-edges
+    # Mark back-edges before refining roles, so the entry heuristic can ignore
+    # a loop-back edge when deciding whether a `/command` node is a true source.
     node_order = list(nodes.keys())
     for edge in edges:
         src_idx = (
@@ -353,6 +349,14 @@ def parse_d2(path):
             else -1
         )
         edge["is_back_edge"] = src_idx > tgt_idx if src_idx >= 0 and tgt_idx >= 0 else False
+
+    # Refine roles from styling + title now that edges/back-edges are known.
+    container_ids = set(containers.keys())
+    for node in nodes.values():
+        node["role"] = _refine_role(node, edges, container_ids)
+    for node in nodes.values():
+        node.pop("_style", None)
+        node.pop("_raw", None)
 
     return {
         "direction": direction,
@@ -410,7 +414,7 @@ def parse_drawio(path):
                 "id": cid,
                 "label": label_lines[0] if label_lines else cid,
                 "details": label_lines[1:],
-                "role": _guess_role(cid, label),
+                "role": _guess_role(cid, label, is_container),
             }
             nodes[cid] = node
             parent_map[cid] = parent
@@ -455,7 +459,7 @@ def _set_md_title(node, raw):
 _SERVICE_WORDS = ("server", "database", "registry", "gateway", "datastore")
 
 
-def _refine_role(node, edges):
+def _refine_role(node, edges, container_ids=()):
     """Assign a role from styling cues + the parsed title (D2 path).
 
     Styling beats keyword-guessing: a diamond is a decision, a dashed border
@@ -470,14 +474,29 @@ def _refine_role(node, edges):
     label = (node.get("label") or "").strip()
     combined = f"{nid} {label}".lower()
 
-    # Styling beats the /command heuristic: a dashed `/eval-run` is a
-    # downstream-skill reference (external), not the diagram's entry point.
     if st.get("shape") == "diamond" or label.endswith("?"):
         return "decision"
+    # A double border is the explicit cue for an LLM/agent reasoning step
+    # (deep-read, synthesize, …). Capturing it as a role keeps the emphasis
+    # automatic — otherwise the cue is dropped with the rest of the D2 styling
+    # and the step renders as a plain processing box.
+    if st.get("double_border"):
+        return "llm"
     if st.get("stroke_dash"):
         return "external"
-    if label.startswith("/") or nid.startswith("/") or "--" in combined:
-        return "entry"
+
+    # A `/command` or `--flag` title marks the diagram's ENTRY point — but only
+    # for a true source. A container's label (e.g. "sync --action") describes a
+    # group, not an entry; and a `/command` that something points at mid-flow is
+    # a downstream skill reference (external), not where the flow starts. Ignore
+    # loop-back edges so a cycle returning to the start doesn't disqualify it.
+    is_command = label.startswith("/") or nid.startswith("/") or "--" in combined
+    if is_command and nid not in container_ids:
+        has_forward_inbound = any(
+            e["to"] == nid and not e.get("is_back_edge") for e in edges
+        )
+        return "external" if has_forward_inbound else "entry"
+
     # Last-resort external: the node IS a service — its name ends in a service
     # noun (suffix, not substring) so "Verify MLflow" doesn't trip it.
     words = re.split(r"[\s/_-]+", combined.strip())
@@ -531,14 +550,16 @@ def _extract_callouts(nodes, edges, containers):
     return callouts
 
 
-def _guess_role(node_id, label):
+def _guess_role(node_id, label, is_container=False):
     """Heuristic role assignment (drawio path / fallback).
 
     External matches only a trailing service noun ("MLflow Server"), never a
-    substring, so an action like "Verify MLflow" stays processing.
+    substring, so an action like "Verify MLflow" stays processing. A container
+    is never the entry — its label (e.g. "sync --action") names a group, not the
+    diagram's start.
     """
     combined = f"{node_id} {label}".lower()
-    if combined.startswith("/") or "--" in combined:
+    if not is_container and (combined.startswith("/") or "--" in combined):
         return "entry"
     words = re.split(r"[\s/_-]+", combined.strip())
     if words and words[-1] in _SERVICE_WORDS:
