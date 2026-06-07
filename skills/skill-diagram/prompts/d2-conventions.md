@@ -13,7 +13,7 @@ direction: right
 *.style.stroke: "#333333"
 ```
 
-Use `direction: down` only when the flow is primarily vertical (many sequential steps, few branches).
+**Default to `direction: right`** — diagrams read best in landscape, and it keeps a plugin's diagrams visually consistent. A long sequential pipeline is NOT a reason to switch to `direction: down`: that produces a tall, hard-to-read vertical strip. Keep `direction: right` and let the layout step wrap a long chain into stacked rows. Reserve `direction: down` for the rare diagram whose source genuinely models a top-to-bottom flow.
 
 ## Node Types and Styles
 

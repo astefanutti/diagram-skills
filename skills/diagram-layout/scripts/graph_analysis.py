@@ -198,12 +198,15 @@ def group_shared_fan_in(spec, min_group=3):
                     counts[t] += 1
         return {t for t, c in counts.items() if c >= 2}
 
-    # Candidate fan-in groups: per (target, label), the lossless source set.
+    roles = {n["id"]: n.get("role") for n in spec.get("nodes", [])}
+    candidates = []
+
+    # (a) Bundle candidates: per (target, label), a set of ≥3 mutually-
+    #     independent sources that converge on ≥2 shared targets — the
+    #     crossing-prone double fan-in (e.g. parallel workers → {report, db}).
     by_target_label = defaultdict(lambda: defaultdict(list))
     for e in fwd:
         by_target_label[e["to"]][e.get("label", "") or ""].append(e["from"])
-
-    candidates = []
     for tgt, by_label in by_target_label.items():
         for label, srcs in by_label.items():
             members = [s for s in dict.fromkeys(srcs)
@@ -211,38 +214,64 @@ def group_shared_fan_in(spec, min_group=3):
             if len(members) < min_group:
                 continue
             ms = set(members)
-            # Members must be mutually independent — parallel siblings, not a
-            # chain/sequence (those link to each other). A *shared* predecessor
-            # is deliberately NOT required: the LLM sometimes inserts an
-            # intermediate step before one branch (dispatch → interpret → sync),
-            # so the branches don't share a single predecessor even though they
-            # are plainly parallel. Requiring it silently dropped the grouping.
+            # Mutually independent (parallel siblings, not a chain). A shared
+            # predecessor is NOT required — the LLM sometimes inserts a step
+            # before one branch, breaking the shared predecessor.
             if any(e["from"] in ms and e["to"] in ms for e in fwd):
                 continue
-            # Only group a genuine multi-fan-in: the members must converge on
-            # ≥2 distinct shared targets (the crossing-prone case grouping
-            # solves, e.g. parallel workers → {report, database}). A set that funnels
-            # to a single sink (e.g. decision branches → one node) gains nothing
-            # from a container, so it's left alone. This is role-agnostic — it
-            # works whether the dispatcher is modelled as a decision or not.
+            # ≥2 distinct shared targets — a set funnelling to one sink (e.g.
+            # decision branches → one node) gains nothing from a container.
             if len(_shared_targets(ms)) < 2:
                 continue
-            candidates.append((len(members), tgt, label, tuple(members)))
+            candidates.append({"size": len(members), "members": tuple(members),
+                               "kind": "bundle"})
+
+    # (b) Service candidates: ≥3 direct children of a common dispatcher that all
+    #     connect to the same EXTERNAL-service node — "operations on a shared
+    #     resource". This catches the cases the bundle rule can't: actions that
+    #     are chained or share only the one service sink. It is robust to the
+    #     LLM's structural variance (the actions always point at the service),
+    #     and it can't fire on a decision whose sink is a plain node — only on
+    #     role=external sinks — so it won't grab mutually-exclusive alternatives.
+    srcs_of = defaultdict(list)
+    for e in fwd:
+        srcs_of[e["to"]].append(e["from"])
+    for tgt, srcs in srcs_of.items():
+        if roles.get(tgt) != "external":
+            continue
+        srcs = [s for s in dict.fromkeys(srcs)
+                if s not in existing_child and s != tgt]
+        if len(srcs) < min_group:
+            continue
+        disp_count = Counter()
+        for s in srcs:
+            for p in preds.get(s, ()):
+                disp_count[p] += 1
+        for disp, _cnt in disp_count.most_common():
+            if disp in srcs or disp == tgt:
+                continue
+            members = [s for s in srcs if disp in preds.get(s, ())]
+            if len(members) >= min_group:
+                candidates.append({"size": len(members),
+                                   "members": tuple(members),
+                                   "kind": "service", "dispatcher": disp})
+                break
 
     # Form groups greedily from the largest candidate; each node used once.
-    candidates.sort(key=lambda c: -c[0])
+    candidates.sort(key=lambda c: -c["size"])
     used = set()
     layers = spec.get("topology", {}).get("layers", {})
     node_order = [n["id"] for n in spec.get("nodes", [])]
     fixes = 0
     gnum = 0
 
-    for _size, _tgt, _label, members in candidates:
-        members = tuple(m for m in members if m not in used)
+    for cand in candidates:
+        kind = cand["kind"]
+        members = tuple(m for m in cand["members"] if m not in used)
         if len(members) < min_group:
             continue
         member_set = set(members)
-        if len(_shared_targets(member_set)) < 2:
+        if kind == "bundle" and len(_shared_targets(member_set)) < 2:
             continue
 
         # Every target this exact group reaches losslessly (same label across
@@ -260,7 +289,9 @@ def group_shared_fan_in(spec, min_group=3):
             if not ok or len(labs) != 1:
                 continue
             bundles.append((cand_tgt, next(iter(labs))))
-        if not bundles:
+        # A bundle group needs a bundle to justify it; a service group is built
+        # for the container alone even when its edges are labelled (no bundle).
+        if kind == "bundle" and not bundles:
             continue
 
         gnum += 1
@@ -270,23 +301,35 @@ def group_shared_fan_in(spec, min_group=3):
             gid = f"group-{gnum}"
         taken_ids.add(gid)
 
-        # Pull in parallel siblings that also reach a bundled target but whose
-        # edge is labelled (so it can't be losslessly bundled — it's kept as an
-        # individual edge into the child). This groups the whole operation set,
-        # not just the losslessly-bundled core (e.g. one worker writing a
-        # labelled artifact alongside the others that bundle to the report).
-        bundle_targets = {t for t, _ in bundles}
         container_members = set(member_set)
-        for nid in node_order:
-            if nid in container_members or nid in used or nid in existing_child:
-                continue
-            if not (succ.get(nid, set()) & bundle_targets):
-                continue
-            if any((e["from"] == nid and e["to"] in container_members) or
-                   (e["from"] in container_members and e["to"] == nid)
-                   for e in fwd):
-                continue
-            container_members.add(nid)
+        if kind == "bundle":
+            # Pull in parallel siblings that also reach a bundled target but
+            # whose edge is labelled (kept individual into the child), so the
+            # whole operation set is grouped, not just the bundled core.
+            bundle_targets = {t for t, _ in bundles}
+            for nid in node_order:
+                if nid in container_members or nid in used or nid in existing_child:
+                    continue
+                if not (succ.get(nid, set()) & bundle_targets):
+                    continue
+                if any((e["from"] == nid and e["to"] in container_members) or
+                       (e["from"] in container_members and e["to"] == nid)
+                       for e in fwd):
+                    continue
+                container_members.add(nid)
+        else:
+            # Service group: include the rest of the dispatcher's direct
+            # children (the full action set, e.g. a pull-feedback that only
+            # links to the service via a back-edge) so the operations group as
+            # one. Skip the service node itself and any already-grouped node.
+            disp = cand["dispatcher"]
+            for nid in node_order:
+                if nid in container_members or nid in used or nid in existing_child:
+                    continue
+                if roles.get(nid) == "external":
+                    continue
+                if disp in preds.get(nid, ()):
+                    container_members.add(nid)
 
         ordered = [nid for nid in node_order if nid in container_members]
         ordered += [m for m in container_members if m not in ordered]
