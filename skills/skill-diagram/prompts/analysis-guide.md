@@ -67,18 +67,20 @@ Group related sub-steps into containers when:
 - A step has 3+ internal variants or sub-modes the reader would benefit from seeing individually
 - The sub-steps share a title/phase name (e.g., "Scoring" contains inline/LLM/external)
 - The grouping clarifies the architecture — showing that these are components of one subsystem, not independent steps
-- **Operations on the same resource**: when multiple steps all act on the same entity (e.g., sync dataset, log results, pull feedback, push feedback all operate on MLflow), group them in a container named after the resource. Compare with the gold standard if available — if it groups operations, your diagram should too.
+- **Operations on the same resource**: when multiple steps all act on the same entity (e.g., several operations that all read/write the same database or service), group them in a container named after the resource. Compare with the gold standard if available — if it groups operations, your diagram should too.
 
 **Common container patterns in skills.** These patterns produce better diagrams because they show internal structure that a single flat node hides. When a skill matches one of these patterns, the container version is almost always clearer:
 - **Scoring/judging systems**: multiple judge types (inline, LLM, pairwise, external) → "Score" container
 - **Tool/hook systems**: multiple interceptors (AskUserQuestion, Bash, MCP tools) → "Tool Interception" container
-- **Execution with mode variants**: case mode, batch mode, headless runner → "Execute Skill" container
-- **Configuration/setup groups**: multiple config steps (MLflow config, API keys, directories) → "Configuration" container
+- **Execution with mode variants**: case mode, batch mode, headless runner → "Execute" container
+- **Configuration/setup groups**: multiple config steps (credentials, env vars, directories) → "Configuration" container
 - **Multi-format output**: multiple output artifacts → "Report" container
 
-Use D2 nested blocks. Container children are simpler nodes (shorter labels, fewer bullets). The container itself has just a title.
+Use D2 nested blocks. Container children are usually simpler nodes (shorter labels, fewer bullets), and the container itself has just a title.
 
-**Anti-pattern**: collapsing a composite subsystem into a single flat node with many bullets. If you find yourself writing 6+ bullets for one node, it probably should be a container with children.
+**Exception — keep a composite member nested, don't flatten it.** Grouping operations on a shared resource must NOT erase the internal structure of an operation that has its own. If a grouped member is itself a multi-step process (e.g. a "sync" operation that reads a schema, generates a mapping, then runs the sync), author it as its **own sub-container** with those steps as children — a nested container — not a single node with the steps reduced to bullets. Containers nest; only flatten members that are genuinely single steps. (This is the common failure: grouping four same-resource operations into one container and collapsing each — including a 3-step one — into a flat node, losing the detail the reader needs.)
+
+**Anti-pattern**: collapsing a composite subsystem into a single flat node with many bullets — whether it's top-level OR a member of a larger group. If you find yourself writing distinct sequential sub-steps as 4+ bullets for one node, it should be a (possibly nested) container with children.
 
 **In-container annotations**: containers can include short annotation text that explains the mechanism, not just the children. Examples: "answers.yaml + input.yaml = LLM context" inside a Tool Interception container, "conditional if/host + skip judge per case" near a Score container. These explain HOW the subsystem works, complementing the children which show WHAT it contains.
 
