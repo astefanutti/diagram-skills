@@ -44,9 +44,9 @@ Standard workflow step. Bold title, action bullets.
 load-config: |md
   **Load Config**
 
-  - eval.yaml
-  - validate skill, dataset
-  - resolve models
+  - config.yaml
+  - validate inputs, schema
+  - resolve dependencies
 | {
   shape: rectangle
   style.fill: "#f5f5f5"
@@ -82,8 +82,8 @@ skill-analysis: |md
 Services, other skills, external CLIs. Dashed border.
 
 ```d2
-mlflow: |md
-  **MLflow Server**
+database: |md
+  **Database**
 | {
   shape: rectangle
   style.fill: "#f5f5f5"
@@ -133,7 +133,7 @@ scoring: Score {
 When diagramming ≤5 skills in detailed mode, each skill becomes a container. Prefix child node IDs with the skill name to avoid collisions. Cross-skill edges connect specific steps.
 
 ```d2
-review: "eval-review" {
+review: "review" {
   style.fill: "#ececec"
   style.stroke: "#333333"
   style.stroke-width: 2
@@ -141,45 +141,45 @@ review: "eval-review" {
   review.load: |md
     **Load Results**
 
-    - summary.yaml
-    - eval.yaml context
+    - results.yaml
+    - config.yaml context
   |
   review.walk: |md
-    **Walk Cases**
+    **Walk Items**
 
-    - present scores
+    - present results
     - collect feedback
   |
   review.save: |md
     **Save Feedback**
 
-    - review.yaml
+    - feedback.yaml
   |
   review.load -> review.walk
   review.walk -> review.save
 }
 
-optimize: "eval-optimize" {
+deploy: "deploy" {
   style.fill: "#ececec"
   style.stroke: "#333333"
   style.stroke-width: 2
 
-  optimize.failures: |md
+  deploy.failures: |md
     **Identify Failures**
 
     - failure map
-    - read review.yaml
+    - read feedback.yaml
   |
-  optimize.edit: |md
-    **Edit Skill**
+  deploy.edit: |md
+    **Apply Fixes**
 
-    - targeted SKILL.md changes
+    - targeted config changes
   |
-  optimize.failures -> optimize.edit
+  deploy.failures -> deploy.edit
 }
 
 # Cross-skill edge
-review.save -> optimize.failures: "review.yaml"
+review.save -> deploy.failures: "feedback.yaml"
 ```
 
 ### Callout Detail Box
@@ -236,9 +236,9 @@ hooks -> execute: "allow / deny\nper tool call"
 Label with the condition that selects this branch.
 
 ```d2
-assess -> bootstrap: "< 5 cases"
-assess -> expand: "gaps found"
-assess -> from-traces: "--strategy\nfrom-traces"
+assess -> fast: "< 5 items"
+assess -> full: "gaps found"
+assess -> incremental: "--strategy\nincremental"
 ```
 
 ### Optional / Fallback Edge
@@ -246,7 +246,7 @@ assess -> from-traces: "--strategy\nfrom-traces"
 Dashed styling for optional paths, fallbacks, or "if not found" branches.
 
 ```d2
-report -> mlflow: optional {
+report -> database: optional {
   style.stroke-dash: 3
 }
 ```
@@ -266,7 +266,7 @@ validate -> gen-yaml: errors {
 - Lowercase with hyphens: `load-config`, `find-dataset`, `gen-yaml`
 - Short and descriptive: prefer `assess` over `assess-current-state`
 - Avoid D2 reserved words and draw.io reserved IDs (e.g., `push`)
-- Containers use the group name: `scoring`, `logresults`
+- Containers use the group name: `scoring`, `workers`
 
 ## Label Detail Levels
 
@@ -310,20 +310,21 @@ workspace: |md
 In pipeline mode (>5 skills), show fan-out as separate edges from one source to multiple targets — NOT a linear chain:
 
 ```d2
-# Correct: fan-out from eval-run
-run -> eval-mlflow: "log results"
-run -> review: "human feedback"
-run -> optimize: "auto-improve"
+# Correct: fan-out from one source
+test -> publish: "log results"
+test -> review: "human sign-off"
+test -> deploy: "auto-promote"
 ```
 
 ```d2
 # Wrong: linear chain misrepresents the topology
-run -> eval-mlflow -> review -> optimize
+test -> publish -> review -> deploy
 ```
 
 ## Complete Example
 
-See the eval-dataset diagram as a representative example of all conventions:
+A representative example exercising all conventions (a generic data-processing
+flow — entry, config, an assessment, a strategy fan-out, generation, report):
 
 ```d2
 direction: right
@@ -336,7 +337,7 @@ direction: right
 # --- Entry ---
 
 args: |md
-  **/eval-dataset**
+  **/process**
 
   - --count N
   - --strategy
@@ -353,9 +354,9 @@ args: |md
 read-config: |md
   **Read Context**
 
-  - eval.yaml (schema,
-    judges, execution)
-  - eval.md (skill analysis)
+  - config.yaml (schema,
+    rules, execution)
+  - spec.md (analysis)
 | {
   shape: rectangle
   style.fill: "#f5f5f5"
@@ -366,10 +367,10 @@ read-config: |md
 # --- Assessment ---
 
 assess: |md
-  **Assess Current State**
+  **Assess Input**
 
-  - count existing cases
-  - read sample case
+  - count existing items
+  - read a sample
   - identify coverage
 | {
   shape: rectangle
@@ -380,13 +381,13 @@ assess: |md
 
 # --- Strategies (fan-out) ---
 
-bootstrap: |md
-  **Bootstrap**
-  (default, < 5 cases)
+fast: |md
+  **Fast**
+  (default, < 5 items)
 
-  - 1 simple case
-  - 1 complex case
-  - 1 edge case
+  - 1 simple item
+  - 1 complex item
+  - 1 edge item
 | {
   shape: rectangle
   style.fill: "#e8e8e8"
@@ -395,12 +396,12 @@ bootstrap: |md
   style.double-border: true
 }
 
-expand: |md
-  **Expand**
+full: |md
+  **Full**
   (fill coverage gaps)
 
-  - read existing cases
-  - compare vs judges
+  - read existing items
+  - compare vs rules
   - generate gap-filling
 | {
   shape: rectangle
@@ -413,9 +414,9 @@ expand: |md
 # --- Output ---
 
 generate: |md
-  **Generate Cases**
+  **Generate Output**
 
-  - case-NNN-slug/
+  - item-NNN-slug/
   - input.yaml
   - reference.md
 | {
@@ -428,8 +429,8 @@ generate: |md
 report: |md
   **Report**
 
-  - N cases generated
-  - next: /eval-run
+  - N items generated
+  - next: /test
 | {
   shape: rectangle
   style.fill: "#f5f5f5"
@@ -442,11 +443,11 @@ report: |md
 args -> read-config
 read-config -> assess
 
-assess -> bootstrap: "< 5 cases"
-assess -> expand: "gaps found"
+assess -> fast: "< 5 items"
+assess -> full: "gaps found"
 
-bootstrap -> generate
-expand -> generate
+fast -> generate
+full -> generate
 
 generate -> report
 ```

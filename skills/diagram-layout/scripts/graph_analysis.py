@@ -272,9 +272,9 @@ def group_shared_fan_in(spec, min_group=3):
 
         # Pull in parallel siblings that also reach a bundled target but whose
         # edge is labelled (so it can't be losslessly bundled — it's kept as an
-        # individual edge into the child). This groups the whole action set, not
-        # just the losslessly-bundled core (e.g. a pull-feedback that writes
-        # review.yaml alongside the sync/log/push that bundle to the report).
+        # individual edge into the child). This groups the whole operation set,
+        # not just the losslessly-bundled core (e.g. one worker writing a
+        # labelled artifact alongside the others that bundle to the report).
         bundle_targets = {t for t, _ in bundles}
         container_members = set(member_set)
         for nid in node_order:

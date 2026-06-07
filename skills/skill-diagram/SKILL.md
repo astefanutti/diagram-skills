@@ -21,7 +21,7 @@ Analyze Claude Code skill directories and generate a D2 flow diagram capturing w
 When multiple `--skill` flags are provided, the diagram mode is selected automatically:
 
 - **Detailed mode** (≤5 skills, or `--detail high`): each skill becomes a **container** with its internal workflow steps as child nodes. Cross-skill edges show shared data flows and Skill tool invocations between skills.
-- **Pipeline mode** (>5 skills, or `--detail low`): each skill becomes a **single node** with a 3-5 bullet summary. Edges show the pipeline flow between skills with artifact names as labels. External services (MLflow, APIs) shared by multiple skills become separate nodes.
+- **Pipeline mode** (>5 skills, or `--detail low`): each skill becomes a **single node** with a 3-5 bullet summary. Edges show the pipeline flow between skills with artifact names as labels. External services (databases, APIs) shared by multiple skills become separate nodes.
 
 ## Workflow
 
@@ -33,8 +33,8 @@ Build a mental model of: what does this skill do, in what order, with what branc
 
 For multi-skill diagrams, additionally scan each SKILL.md for:
 - **Skill tool invocations**: references to other skills being invoked (these become cross-skill edges)
-- **Shared artifacts**: files read/written by multiple skills (eval.yaml, SKILL.md, summary.yaml)
-- **Shared services**: external services referenced by multiple skills (MLflow, APIs)
+- **Shared artifacts**: files read/written by multiple skills (config.yaml, SKILL.md, results.yaml)
+- **Shared services**: external services referenced by multiple skills (databases, APIs)
 
 ### Step 2: Analyze the Flow
 
@@ -51,7 +51,7 @@ Identify:
 - **Sequential steps**: follow the numbered workflow in SKILL.md
 - **Decision branches**: if/else conditions, strategy selection, conditional paths
 - **LLM/agent steps**: anything using Agent tool, sub-agents, prompt files, or direct LLM calls
-- **External dependencies**: other skills invoked (Skill tool), services (MLflow, APIs), external CLIs
+- **External dependencies**: other skills invoked (Skill tool), services (databases, APIs), external CLIs
 - **Containers**: groups of related sub-steps that execute as a unit
 - **Output artifacts**: files produced, reports generated, things opened
 - **Back-edges**: validation→retry loops, feedback cycles, fallback paths
@@ -79,7 +79,7 @@ For each skill, extract:
 Then:
 1. **Infer pipeline order**: skills with no upstream dependencies are entry points. Follow Skill tool invocations and artifact flows to determine the sequence.
 2. **Detect feedback loops**: bidirectional dependencies (e.g., run ↔ review, run ↔ optimize)
-3. **Identify external services**: services not in the skill list (MLflow, APIs) become separate external nodes with dashed borders
+3. **Identify external services**: services not in the skill list (databases, APIs) become separate external nodes with dashed borders
 4. **Build a compact graph**: one node per skill, edges labeled with the primary data flow or invocation
 
 ### Step 3: Generate D2

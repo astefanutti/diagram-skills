@@ -17,7 +17,7 @@ How to extract a flow diagram from a Claude Code skill directory.
 Always the first node. Extract from SKILL.md:
 - Skill name (from frontmatter `name` field or the `# Title`)
 - CLI arguments (from an `## Arguments` section, or inferred from the workflow)
-- The entry node uses the skill's invocation name: `/eval-run`, `/diagram-layout`, etc.
+- The entry node uses the skill's invocation name: `/build`, `/deploy`, etc.
 
 ### 2. Sequential Steps
 
@@ -31,7 +31,7 @@ Follow the numbered workflow in SKILL.md (e.g., "### Step 1", "### Step 2"). Eac
 
 Look for:
 - Explicit conditions: "if X, do A; otherwise do B"
-- Strategy selection: "choose between bootstrap, expand, or from-traces"
+- Strategy selection: "choose between fast, full, or incremental"
 - Optional steps: "if `--flag` is set, also do X"
 - Error paths: "if validation fails, retry"
 
@@ -51,15 +51,15 @@ These get `style.double-border: true` and `style.fill: "#e8e8e8"`. Add "LLM" or 
 
 Things outside the skill that it calls or depends on:
 - Other skills invoked via the Skill tool
-- External services (MLflow, APIs, databases)
+- External services (databases, APIs, message queues)
 - CLI tools (draw.io, d2, git)
 - Other processes (servers, background tasks)
 
 These get `style.stroke-dash: 3` (dashed border).
 
-**Always surface integration points**: if the skill connects to an external service (MLflow server, API endpoint, database), show it as a separate dashed-border node even if the skill treats it as incidental. Integration points are high-value information for readers — they show where the skill crosses system boundaries. Look for: environment variable checks, server URLs, API client initialization, health checks.
+**Always surface integration points**: if the skill connects to an external service (database, API endpoint, message broker), show it as a separate dashed-border node even if the skill treats it as incidental. Integration points are high-value information for readers — they show where the skill crosses system boundaries. Look for: environment variable checks, server URLs, API client initialization, health checks.
 
-**Granularity for external nodes**: show services and skills, not scripts. A script like `from_traces.py` is an implementation detail — the reader cares that the skill "pulls traces from MLflow", not which Python file does it. External nodes should be at the same abstraction level as the workflow steps: services (MLflow Server), skills (/eval-run), or CLI tools (draw.io) — never individual script files.
+**Granularity for external nodes**: show services and skills, not scripts. A script like `fetch_records.py` is an implementation detail — the reader cares that the skill "pulls records from the database", not which Python file does it. External nodes should be at the same abstraction level as the workflow steps: services (a Database), skills (/test), or CLI tools (draw.io) — never individual script files.
 
 ### 6. Containers for Composite Subsystems
 
@@ -88,7 +88,7 @@ Use D2 nested blocks. Container children are usually simpler nodes (shorter labe
 
 When a step has distinct execution modes, show them as alternative sub-nodes rather than collapsing into one box. Look for:
 - If/else on mode flags (e.g., `case` mode vs `batch` mode)
-- Distinct code paths triggered by arguments (e.g., `--strategy bootstrap` vs `--strategy expand`)
+- Distinct code paths triggered by arguments (e.g., `--strategy fast` vs `--strategy full`)
 - Different argument handling or data flow per mode
 
 Model these as fan-out alternatives at the same column, stacked vertically, with edge labels naming the mode. The viewer should see at a glance that there are N distinct paths.
@@ -96,9 +96,9 @@ Model these as fan-out alternatives at the same column, stacked vertically, with
 ### 6b. Callout Detail Boxes
 
 Generate callout boxes for concrete examples that ground abstract steps in tangible detail. Look for:
-- **Primary output artifacts**: the skill's main output file (e.g., `eval.yaml`, `review.yaml`, `summary.yaml`) deserves a callout showing its structure — key fields, nesting, what each section contains. These are the most valuable callouts because they show the reader what the skill actually produces.
+- **Primary output artifacts**: the skill's main output file (e.g., `config.yaml`, `results.yaml`, `report.yaml`) deserves a callout showing its structure — key fields, nesting, what each section contains. These are the most valuable callouts because they show the reader what the skill actually produces.
 - **File trees** created by scripts (e.g., workspace directory structure)
-- **Config snippets** documented in SKILL.md or references (e.g., eval.yaml structure)
+- **Config snippets** documented in SKILL.md or references (e.g., config.yaml structure)
 - **YAML/JSON structures** that are central to the skill's data model
 
 Callout boxes connect to their anchor node with a dashed line and sit in whitespace near it. They use monospace font, left-aligned text, and a light border. They make the diagram more useful as a reference doc — without them, the diagram stays abstract.
@@ -124,9 +124,9 @@ Look for:
 
 **Rule**: if a step produces a named artifact that the next step consumes, label the edge with that artifact name. If the relationship is just "A then B" with no specific data handoff, leave the edge unlabeled.
 
-**Fan-out deduplication**: when one step fans out to N downstream steps and the same artifact flows to all of them (e.g., eval-run produces summary.yaml consumed by mlflow, review, and optimize), do NOT repeat the artifact name on every fan-out edge. Instead, attach the artifact as a callout box to the source node, and leave the fan-out edges unlabeled or labeled with the specific action each target takes. Repeated identical labels on fan-out edges create visual clutter and waste space.
+**Fan-out deduplication**: when one step fans out to N downstream steps and the same artifact flows to all of them (e.g., a build step produces results.yaml consumed by publish, review, and deploy), do NOT repeat the artifact name on every fan-out edge. Instead, attach the artifact as a callout box to the source node, and leave the fan-out edges unlabeled or labeled with the specific action each target takes. Repeated identical labels on fan-out edges create visual clutter and waste space.
 
-**Most skills have data-flow labels** — look harder if you find none. Common artifacts that flow between steps: config files (`eval.yaml`, `settings.json`), output files (`summary.yaml`, `report.html`, `collection.json`), data structures (`run_result.json`, `graph-spec.json`), and log files (`stdout.log`). The edge_quality judge checks for at least one data-flow label with a file extension in diagrams with ≥8 edges.
+**Most skills have data-flow labels** — look harder if you find none. Common artifacts that flow between steps: config files (`config.yaml`, `settings.json`), output files (`results.yaml`, `report.html`, `collection.json`), data structures (`run_result.json`, `graph-spec.json`), and log files (`stdout.log`). The edge_quality judge checks for at least one data-flow label with a file extension in diagrams with ≥8 edges.
 
 ### 9. Upstream and Downstream Skills
 
@@ -173,40 +173,40 @@ When diagramming multiple skills together, apply the single-skill extraction to 
 ### Cross-Skill Edge Detection
 
 Scan each skill's SKILL.md and scripts for references to other skills in the set:
-- **Skill tool invocations**: `Skill({ skill: "eval-run" })` or "invoke /eval-run" — these are direct edges
-- **Shared artifacts**: files written by one skill and read by another (e.g., skill A writes `summary.yaml`, skill B reads it)
-- **Shared config**: files like `eval.yaml` that multiple skills read or modify
-- **Suggested next steps**: many skills end with "suggest /eval-optimize or /eval-review" — these are downstream pipeline edges
+- **Skill tool invocations**: `Skill({ skill: "test" })` or "invoke /test" — these are direct edges
+- **Shared artifacts**: files written by one skill and read by another (e.g., skill A writes `results.yaml`, skill B reads it)
+- **Shared config**: files like `config.yaml` that multiple skills read or modify
+- **Suggested next steps**: many skills end with "suggest /deploy or /review" — these are downstream pipeline edges
 
 ### Pipeline Order Inference
 
-1. Skills with no upstream dependencies are **entry points** (e.g., `/eval-setup`)
+1. Skills with no upstream dependencies are **entry points** (e.g., `/setup`)
 2. Follow Skill tool invocations and artifact flows to determine the sequence
-3. Skills that are invoked by others but invoke nothing are **terminal** (e.g., `/eval-review`)
-4. Bidirectional dependencies indicate **feedback loops** (e.g., `/eval-run` ↔ `/eval-optimize`)
+3. Skills that are invoked by others but invoke nothing are **terminal** (e.g., `/review`)
+4. Bidirectional dependencies indicate **feedback loops** (e.g., `/test` ↔ `/deploy`)
 
 **Fan-out detection is critical.** When a skill invokes or feeds into multiple downstream skills, show ALL downstream connections as a fan-out — not a linear chain. A linear chain `A → B → C` means B must complete before C starts. A fan-out `A → B` and `A → C` means both B and C are downstream of A independently.
 
-Concrete example: `/eval-run` feeds into three downstream skills:
-- `/eval-run → /eval-mlflow` (log results)
-- `/eval-run → /eval-review` (human feedback)
-- `/eval-run → /eval-optimize` (automated improvement)
+Concrete example: `/test` feeds into three downstream skills:
+- `/test → /publish` (log results)
+- `/test → /review` (human sign-off)
+- `/test → /deploy` (automated promotion)
 
-These are three separate edges from eval-run, not a chain `eval-run → eval-mlflow → eval-review → eval-optimize`. Missing a fan-out is a structural error — it misrepresents the pipeline topology.
+These are three separate edges from /test, not a chain `/test → /publish → /review → /deploy`. Missing a fan-out is a structural error — it misrepresents the pipeline topology.
 
 How to detect: scan each skill's "Next Steps", "Suggest", or final step for references to other skills. If a skill suggests 3 downstream skills, it has fan-out degree 3.
 
 ### External Service Detection
 
 Services referenced by multiple skills but not in the skill list become shared external nodes:
-- MLflow server (referenced by eval-setup, eval-mlflow, eval-run)
-- APIs, databases, or CLI tools used across skills
+- A database (referenced by /setup, /publish, /test)
+- APIs, message queues, or CLI tools used across skills
 
 These get a single dashed-border node with edges from each referencing skill.
 
 ### Mode Selection
 
-- **Detailed mode** (≤5 skills): one D2 container per skill with internal steps as children. Cross-skill edges connect specific steps (e.g., `review.save-feedback -> optimize.identify-failures: "review.yaml"`). Node IDs are prefixed with the skill name to avoid collisions.
+- **Detailed mode** (≤5 skills): one D2 container per skill with internal steps as children. Cross-skill edges connect specific steps (e.g., `review.save-feedback -> deploy.identify-failures: "feedback.yaml"`). Node IDs are prefixed with the skill name to avoid collisions.
 - **Pipeline mode** (>5 skills): one node per skill with 3-5 bullet summary. Edges show primary data flow between skills. No internal steps visible — the diagram shows orchestration, not implementation.
 
 ### Granularity in Pipeline Mode
@@ -216,4 +216,4 @@ In pipeline mode, each skill collapses to a single node. The node label should c
 - 3-5 bullets describing what it does (the key actions, not the implementation)
 - The node type based on the skill's overall character (entry, processing, external, output)
 
-Aim for 7-12 total nodes including external services. If the pipeline has 15+ skills, group related skills into containers (e.g., "Data Preparation" containing setup + analyze + dataset).
+Aim for 7-12 total nodes including external services. If the pipeline has 15+ skills, group related skills into containers (e.g., "Data Preparation" containing fetch + validate + transform).
