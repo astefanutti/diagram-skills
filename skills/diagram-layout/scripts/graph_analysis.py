@@ -208,11 +208,14 @@ def group_shared_fan_in(spec, min_group=3):
                        if s not in existing_child and s != tgt]
             if len(members) < min_group:
                 continue
-            # Require a predecessor common to every member (a shared dispatcher
-            # — confirms parallel siblings, not nodes that merely share a sink).
-            common_pred = set.intersection(*[preds.get(m, set()) for m in members])
-            common_pred -= set(members) | {tgt}
-            if not common_pred:
+            ms = set(members)
+            # Members must be mutually independent — parallel siblings, not a
+            # chain/sequence (those link to each other). A *shared* predecessor
+            # is deliberately NOT required: the LLM sometimes inserts an
+            # intermediate step before one branch (dispatch → interpret → sync),
+            # so the branches don't share a single predecessor even though they
+            # are plainly parallel. Requiring it silently dropped the grouping.
+            if any(e["from"] in ms and e["to"] in ms for e in fwd):
                 continue
             # Only group a genuine multi-fan-in: the members must converge on
             # ≥2 distinct shared targets (the crossing-prone case grouping
@@ -220,7 +223,7 @@ def group_shared_fan_in(spec, min_group=3):
             # to a single sink (e.g. decision branches → one node) gains nothing
             # from a container, so it's left alone. This is role-agnostic — it
             # works whether the dispatcher is modelled as a decision or not.
-            if len(_shared_targets(set(members))) < 2:
+            if len(_shared_targets(ms)) < 2:
                 continue
             candidates.append((len(members), tgt, label, tuple(members)))
 
@@ -265,8 +268,26 @@ def group_shared_fan_in(spec, min_group=3):
             gid = f"group-{gnum}"
         taken_ids.add(gid)
 
-        ordered = [nid for nid in node_order if nid in member_set]
-        ordered += [m for m in members if m not in ordered]
+        # Pull in parallel siblings that also reach a bundled target but whose
+        # edge is labelled (so it can't be losslessly bundled — it's kept as an
+        # individual edge into the child). This groups the whole action set, not
+        # just the losslessly-bundled core (e.g. a pull-feedback that writes
+        # review.yaml alongside the sync/log/push that bundle to the report).
+        bundle_targets = {t for t, _ in bundles}
+        container_members = set(member_set)
+        for nid in node_order:
+            if nid in container_members or nid in used or nid in existing_child:
+                continue
+            if not (succ.get(nid, set()) & bundle_targets):
+                continue
+            if any((e["from"] == nid and e["to"] in container_members) or
+                   (e["from"] in container_members and e["to"] == nid)
+                   for e in fwd):
+                continue
+            container_members.add(nid)
+
+        ordered = [nid for nid in node_order if nid in container_members]
+        ordered += [m for m in container_members if m not in ordered]
         spec.setdefault("containers", []).append({
             "id": gid,
             "label": _group_label(ordered, spec),
@@ -289,8 +310,9 @@ def group_shared_fan_in(spec, min_group=3):
             })
 
         if layers:
-            layers[gid] = min((layers.get(m, 0) for m in members), default=0)
-        used |= member_set
+            layers[gid] = min((layers.get(m, 0) for m in container_members),
+                              default=0)
+        used |= container_members
         fixes += 1
 
     return fixes
