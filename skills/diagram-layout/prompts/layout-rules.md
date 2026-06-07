@@ -54,6 +54,8 @@ Back-edges (loops, feedback) MUST route around nodes, never through them:
 2. Choose routing side: **top is preferred** for short back-edges (adjacent nodes), bottom for long back-edges that span many columns
 3. **Keep loops compact** — route only as far below/above as needed to clear the nodes between source and target, not the entire diagram. For a back-edge between adjacent nodes, route just 30-40px above or below them.
 
+**Clearance distances** (when a loop must span further): route a below-diagram back-edge 50-100px below the lowest node it has to clear; route an above-container back-edge 20-30px above the container's top edge; keep side routing 20-30px outside the outermost node. Stagger multiple shared-corridor back-edges per Rule 8d.
+
 Waypoint template for **top-routed** short back-edge (the most common case — validation retry loops):
 ```
 exit: (source_center_x, source_top)
@@ -312,6 +314,8 @@ Edge crossings are a critical defect — second only to edges passing through no
 5. **Reorder nodes vertically**: if two forward edges cross, swap the vertical positions of the target nodes to uncross them. This is always preferable to complex waypoint routing.
 
 **Hub-spoke fan-out**: when one node (e.g., "config") fans out to 3+ targets stacked vertically, and those targets also connect to a shared service node, the service-bound edges will cross the fan-out edges unless you: (1) place the service node on the exterior (Rule 1 — shared service nodes), (2) route service edges through the exterior corridor (top or bottom), and (3) stagger the exit points on the fan-out source so inner targets use inner exit points and outer targets use outer exit points (Rule 8c nested ordering).
+
+**Shared junction for a fan-out**: when one node fans out to 3+ targets, route all branches through a single junction point ~30-50px past the source — exit the source once, move to the junction, then branch vertically to each target's y and finally horizontally into each target. This draws as one clean tree (a trunk that splits into branches) instead of N separate diverging lines that cross each other.
 
 **Verification**: after laying out all edges, check every pair of edge segments for intersections. If any crossing exists, resolve it before proceeding to rendering. The `validate_layout.py` script flags crossings as errors.
 
