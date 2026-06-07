@@ -34,8 +34,9 @@ def _escape_for_xml_attr(html_label: str) -> str:
 
 # "0" and "1" are draw.io's own root and default-layer cell ids; a node using
 # either collides with them and silently renders an empty diagram. The rest are
-# attribute/keyword names that have caused silent export failures.
-_RESERVED_IDS = {"0", "1", "filter", "push", "output", "style", "parent", "source", "target", "value", "edge", "vertex"}
+# attribute/keyword names that have caused export failures — silently (a near-
+# empty diagram) or, like "find", a hard "Export failed" from the draw.io CLI.
+_RESERVED_IDS = {"0", "1", "filter", "find", "push", "output", "style", "parent", "source", "target", "value", "edge", "vertex"}
 
 
 def _safe_id(cid, id_map):
@@ -149,13 +150,47 @@ def _vertex(cid, label, x, y, w, h, style, parent="1"):
     )
 
 
+def _default_dashed_edge_style():
+    return (
+        "edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333333;"
+        "strokeWidth=1.5;dashed=1;dashPattern=8 4;html=1;"
+        "fontFamily=Inter,Helvetica,Arial,sans-serif;"
+    )
+
+
+def _callout_edge_style():
+    return (
+        "edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#bbbbbb;"
+        "strokeWidth=1;dashed=1;dashPattern=4 4;html=1;"
+        "fontFamily=Inter,Helvetica,Arial,sans-serif;"
+    )
+
+
+def _normalize_edge_style(style):
+    """Ensure an edge has a real orthogonal mxGraph style.
+
+    The layout step sometimes emits a bare *type keyword* ("forward",
+    "conditional", "back", "callout") instead of a full style string. Appending
+    exit/entry anchors to that keyword yields an invalid style with no
+    `edgeStyle=orthogonalEdgeStyle`, so draw.io draws a straight diagonal line.
+    Map the keyword to the right orthogonal style; pass real styles through.
+    """
+    if style and "edgeStyle=" in style:
+        return style
+    key = (style or "").lower()
+    if "callout" in key:
+        return _callout_edge_style()
+    if any(k in key for k in ("dash", "back", "conditional", "optional", "loop")):
+        return _default_dashed_edge_style()
+    return _default_edge_style()
+
+
 def _edge(eid, source, target, label, style, waypoints=None,
           exit_point=None, entry_point=None):
     label_escaped = _escape_for_xml_attr(label) if label else ""
 
-
     # Add exit/entry points to style
-    full_style = style
+    full_style = _normalize_edge_style(style)
     if exit_point:
         full_style += (
             f"exitX={exit_point['x']};exitY={exit_point['y']};"
