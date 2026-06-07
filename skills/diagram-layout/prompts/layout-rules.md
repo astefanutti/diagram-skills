@@ -8,13 +8,13 @@ Assign each node to a semantic column based on its ROLE in the pipeline, not its
 
 | Column | Role | Examples |
 |--------|------|----------|
-| 0 | Entry / trigger | /eval-analyze, /eval-run, /eval-mlflow |
-| 1 | Setup / config loading | Find Skill, Load Config, Read Context |
-| 2 | Assessment / decision | Freshness Check, Preflight, Assess Current State |
-| 3 | Core processing | Deep Skill Analysis, Execute Skill, strategies |
+| 0 | Entry / trigger | /build, /deploy, /sync |
+| 1 | Setup / config loading | Load Config, Read Input, Resolve Deps |
+| 2 | Assessment / decision | Validate Input, Health Check, Choose Strategy |
+| 3 | Core processing | Transform, Execute, parallel workers |
 | 4 | Validation / scoring | Validate, Score, Collect |
-| 5 | Output / reporting | Generate eval.md, Report, review.yaml |
-| 6 | External / optional | MLflow Server, external services |
+| 5 | Output / reporting | Write Output, Report, results file |
+| 6 | External / optional | Database, API gateway, external services |
 
 When two nodes serve parallel roles (both are core processing, both are output generators), place them in the SAME column, stacked vertically. This is critical for fan-out patterns.
 
@@ -24,7 +24,7 @@ When a node's role is ambiguous, consider: what does it PRODUCE? Nodes producing
 
 **Free-floating nodes** — external services, callouts, and file annotations do NOT participate in the pipeline flow. They have no sequence constraints (no "must come after step X"). This means they are NOT bound to column assignment — position them wherever minimizes edge crossings and maximizes routing clarity. Treat their placement as a routing optimization problem, not a semantic column decision.
 
-Examples of free-floating nodes: MLflow Server, API gateways, databases, file-tree callouts, config-snippet callouts, schema annotations. These nodes connect to pipeline steps but are not steps themselves.
+Examples of free-floating nodes: databases, API gateways, message queues, file-tree callouts, config-snippet callouts, schema annotations. These nodes connect to pipeline steps but are not steps themselves.
 
 **Placement strategy**: after placing all pipeline nodes (steps 1-2), position free-floating nodes in the remaining whitespace. For each free-floating node, consider all candidate positions (above, below, left margin, right margin) and pick the one where its edges don't cross any existing edges or pass through any pipeline nodes. Common good positions:
 - A service connected to many nodes on the right side → place it far right, vertically centered among its connections
@@ -40,7 +40,7 @@ When a node fans out to N successor alternatives (same semantic role):
 3. Center the stack vertically so the fan-out source's center y aligns with the stack's midpoint
 4. Order alternatives top-to-bottom by: primary/default path first, secondary paths next, fallback/error paths last
 
-Example from eval-dataset: Assess Current State fans out to Bootstrap (top, default), Expand (middle), From Traces (bottom, fallback). All three are at the same x.
+Example: a Choose Strategy decision fans out to Fast Path (top, default), Full Path (middle), and Fallback (bottom, error path). All three are at the same x.
 
 For fan-in (multiple nodes converging to one), position the fan-in target centered vertically relative to its predecessors' y-range.
 
@@ -123,13 +123,13 @@ Supplementary information goes in callout boxes connected with dashed edges:
 
 When several parallel operations each feed the **same** downstream target(s) — a "fan-in" — place those shared targets **adjacent to the operations column**, vertically centered on the operations they receive from. Do NOT push them to the canvas extremes.
 
-This pattern is common in hub-spoke diagrams: a config/dispatch node fans out to N operations, and those N operations all converge on one or two shared targets (e.g., a Report node and an external Server). The failure mode is placing the shared target in the far "output" column (Rule 1 column 5/6) when there is nothing between it and the operations — this creates a wide empty band and N long parallel edges crossing it.
+This pattern is common in hub-spoke diagrams: a config/dispatch node fans out to N operations, and those N operations all converge on one or two shared targets (e.g., a Report node and an external Database). The failure mode is placing the shared target in the far "output" column (Rule 1 column 5/6) when there is nothing between it and the operations — this creates a wide empty band and N long parallel edges crossing it.
 
 Rules:
 1. **Distance**: a shared fan-in target sits one column-gap (40-60px) to the right of the **widest** operation in the column, not at the canvas edge. If the operations column's right edge is at x=R, the target's left edge is at ~R+50, regardless of where other "output" nodes sit.
 2. **Vertical centering**: center the target on the y-midpoint of the operations that feed it, so the convergence edges are short and symmetric rather than long diagonals-turned-L-bends.
-3. **Two shared targets** (e.g., Report on the right, Server below): place one to the right of the operations (vertically centered) and the other directly below the operations (horizontally centered), each hugging the column. Avoid putting one at the far right AND one at the far bottom — that maximizes edge length and whitespace.
-4. **Downstream of the target**: if the shared target has its own downstream nodes (e.g., Report → review/optimize), place those immediately beyond the target in the same direction, so the target + its satellites form one compact cluster — never leave the target stranded far from its sources to make room for its satellites.
+3. **Two shared targets** (e.g., Report on the right, Database below): place one to the right of the operations (vertically centered) and the other directly below the operations (horizontally centered), each hugging the column. Avoid putting one at the far right AND one at the far bottom — that maximizes edge length and whitespace.
+4. **Downstream of the target**: if the shared target has its own downstream nodes (e.g., Report → Notify/Archive), place those immediately beyond the target in the same direction, so the target + its satellites form one compact cluster — never leave the target stranded far from its sources to make room for its satellites.
 
 The test: if you can draw a large empty rectangle (no nodes, only edges) between a fan-out column and its shared fan-in target, the target is too far away — pull it in.
 
@@ -143,9 +143,9 @@ container→target edge. When you see a `"grouped": true` container in the spec,
 just lay it out as a normal container (Rule 5/6) and place the bundled edge on
 the border facing its target. The guidance below still applies to the cases the
 grouper can't bundle (e.g. the second sink whose per-operation edges carry
-distinct labels, like `→mlflow`).
+distinct labels, like `→database`).
 
-When the **same** group of N operations each connect to **two** shared targets (e.g. every operation links to both a Report and an external MLflow Server), placing both targets on the **same side** of the operations column forces edge crossings — the edges to the near target cross the edges to the far one. This subgraph (N sources × 2 sinks) is planar, so the crossings are avoidable.
+When the **same** group of N operations each connect to **two** shared targets (e.g. every operation links to both a Report and an external Database), placing both targets on the **same side** of the operations column forces edge crossings — the edges to the near target cross the edges to the far one. This subgraph (N sources × 2 sinks) is planar, so the crossings are avoidable.
 
 Place the two sinks on **opposite sides** of the operations group:
 - one to the **right** of the column, the other to the **left** (or one **above**, one **below** for a horizontal source row). Each operation then sends one edge left and one edge right — no crossings.
@@ -187,7 +187,7 @@ After initial placement, check the aspect ratio against the target for the topol
 
 **Strip layout detection**: after initial placement, check if all forward-flow nodes share roughly the same y-row (y values within 50px). This is a "strip layout" — a long horizontal band that's hard to read. A strip with 8+ nodes always needs correction. Apply strategies 1-3 first (stacking and containers usually suffice), then strategy 4 if still needed. The goal is that the layout uses at least 2-3 distinct y-levels for forward-flow nodes.
 
-**Bidirectional subsystems**: when a step has a bidirectional relationship with a subsystem (e.g., execute ↔ tool interception), place the subsystem on the orthogonal axis (below for `direction: right`, to the right for `direction: down`).
+**Bidirectional subsystems**: when a step has a bidirectional relationship with a subsystem (e.g., a service ↔ its cache/datastore), place the subsystem on the orthogonal axis (below for `direction: right`, to the right for `direction: down`).
 
 ## Rule 6b: Variable Node Sizing by Complexity
 
@@ -197,13 +197,13 @@ Nodes should be sized to match their content and structural importance, not unif
 
 | Tier | Width | Height | Use for | Visual weight |
 |------|-------|--------|---------|---------------|
-| Large | 350-550 | 120-140 | Containers (Score, Execute, Tool Interception) | Dominant — the core subsystems |
+| Large | 350-550 | 120-140 | Containers (Build, Execute, Process Batch) | Dominant — the core subsystems |
 | Medium | 150-180 | 120-150 | Major processing (Load Config, Prepare Workspace) | Standard — the backbone steps |
-| Small | 120-145 | 80-110 | Minor steps (Preflight, Find Dataset, Collect) | Light — validation gates, pass-through |
-| Compact | 100-130 | 40-55 | External skills, downstream links (/eval-mlflow) | Minimal — just references |
+| Small | 120-145 | 80-110 | Minor steps (Validate, Fetch, Collect) | Light — validation gates, pass-through |
+| Compact | 100-130 | 40-55 | External services, downstream links (/deploy) | Minimal — just references |
 | Callout | 160-220 | 150-200 | File trees, config snippets | Distinct — reference material |
 
-**The test**: if two nodes have the same width and height but very different importance to the workflow, one of them is mis-sized. Preflight Check should NOT be the same size as Prepare Workspace.
+**The test**: if two nodes have the same width and height but very different importance to the workflow, one of them is mis-sized. A small validation gate should NOT be the same size as a core processing step.
 
 **Anti-pattern**: making all nodes the same size. This produces a monotonous visual rhythm and fails to communicate which steps are the important ones.
 

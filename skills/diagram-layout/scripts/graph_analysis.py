@@ -147,17 +147,19 @@ def _group_label(member_ids, spec):
 def group_shared_fan_in(spec, min_group=3):
     """Collapse a parallel fan-in into a container with one bundled edge.
 
-    When ≥`min_group` nodes are each fed by a **common predecessor** and each
-    connect to a **common target** via *lossless* edges (un-labelled, or all
-    sharing one identical label), wrap them in a container and replace the N
-    individual edges to that target with a single container→target edge. This
-    is the deterministic version of layout-rules Rule 5c — it removes the
-    double-fan-in crossings the LLM rarely fixes on its own.
+    When ≥`min_group` mutually-independent nodes (parallel siblings, not a
+    chain) converge on **≥2 distinct shared targets** — the crossing-prone
+    double fan-in — wrap them in a container and, for each *lossless* target
+    (edges un-labelled, or all sharing one identical label), replace the N
+    individual edges with a single container→target edge. This is the
+    deterministic version of layout-rules Rule 5c — it removes the double
+    fan-in crossings the LLM rarely fixes on its own.
 
-    Lossless only: a fan-in whose edges carry distinct labels (e.g. the
-    actions→mlflow edges) is left as individual edges into the container's
-    children, preserving every label. Members that are themselves containers
-    are allowed (the container simply nests).
+    Lossless only: a fan-in whose edges carry distinct labels (e.g. parallel
+    workers each writing to a database with a different operation label) is left
+    as individual edges into the container's children, preserving every label.
+    Members that are themselves containers are allowed (the container simply
+    nests).
     """
     edges = spec.get("edges", [])
     fwd = [e for e in edges if not e.get("is_back_edge")]
@@ -219,7 +221,7 @@ def group_shared_fan_in(spec, min_group=3):
                 continue
             # Only group a genuine multi-fan-in: the members must converge on
             # ≥2 distinct shared targets (the crossing-prone case grouping
-            # solves, e.g. mlflow actions → {report, mlflow}). A set that funnels
+            # solves, e.g. parallel workers → {report, database}). A set that funnels
             # to a single sink (e.g. decision branches → one node) gains nothing
             # from a container, so it's left alone. This is role-agnostic — it
             # works whether the dispatcher is modelled as a decision or not.

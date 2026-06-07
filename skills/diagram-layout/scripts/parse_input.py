@@ -171,7 +171,7 @@ def parse_d2(path):
         # end-of-line after the chain, so a bare trailing `{` dropped the edge.
         # Node ids may be dot-qualified (`container.child`); capture the dot
         # so the target isn't truncated to the container (which would collapse
-        # `report -> downstream.{mlflow,review,dataset}` to 3 identical edges).
+        # `src -> group.{a,b,c}` to 3 identical edges).
         edge_match = re.match(
             r"([\w.-]+(?:\s*(?:<->|->|<-)\s*[\w.-]+)+)", stripped
         )
@@ -464,10 +464,10 @@ def _refine_role(node, edges, container_ids=()):
 
     Styling beats keyword-guessing: a diamond is a decision, a dashed border
     is external/optional, a `/command` title is an entry. The external keyword
-    fallback matches only a service NOUN at the end of the name ("MLflow
-    Server"), never a substring ("Verify MLflow" is a processing step, not the
+    fallback matches only a service NOUN at the end of the name ("Auth
+    Server"), never a substring ("Verify Server" is a processing step, not the
     server). Output is only inferred for a sink node (no outgoing edges), so
-    writing steps like 'gen-report' or 'log-results' stay processing.
+    writing steps like 'gen-report' or 'write-results' stay processing.
     """
     st = node.get("_style", {})
     nid = node["id"]
@@ -498,7 +498,7 @@ def _refine_role(node, edges, container_ids=()):
         return "external" if has_forward_inbound else "entry"
 
     # Last-resort external: the node IS a service — its name ends in a service
-    # noun (suffix, not substring) so "Verify MLflow" doesn't trip it.
+    # noun (suffix, not substring) so "Verify Server" doesn't trip it.
     words = re.split(r"[\s/_-]+", combined.strip())
     if words and words[-1] in _SERVICE_WORDS:
         return "external"
@@ -553,8 +553,8 @@ def _extract_callouts(nodes, edges, containers):
 def _guess_role(node_id, label, is_container=False):
     """Heuristic role assignment (drawio path / fallback).
 
-    External matches only a trailing service noun ("MLflow Server"), never a
-    substring, so an action like "Verify MLflow" stays processing. A container
+    External matches only a trailing service noun ("Auth Server"), never a
+    substring, so an action like "Verify Server" stays processing. A container
     is never the entry — its label (e.g. "sync --action") names a group, not the
     diagram's start.
     """

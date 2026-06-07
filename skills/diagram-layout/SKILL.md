@@ -65,7 +65,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/graph_analysis.py artifacts/graph-spec.json 
 
 This uses networkx to compute topological layers, fan-out/fan-in points, back-edges, and classify the topology as `pipeline`, `diamond`, `hub-spoke`, or `complex`. It enriches the graph spec with topology annotations in place.
 
-It also performs **deterministic fan-in grouping**: when ≥3 nodes are each fed by a common dispatcher *and* converge on **≥2 distinct shared targets** (the crossing-prone double fan-in, e.g. mlflow actions → both `report` and `mlflow`), they are wrapped in a new container (`"grouped": true`) and each losslessly-shared target (un-labelled, or all sharing one identical label) has its N edges replaced by a single container→target edge. A single-sink fan-out (decision branches converging on one node) is left alone. A grouped member may itself be a container, producing a **nested container** — lay it out per the nested format below. The grouping is also enforced deterministically by the fixer (Step 4), so it survives even if this layout pass lays the members out flat.
+It also performs **deterministic fan-in grouping**: when ≥3 nodes are each fed by a common dispatcher *and* converge on **≥2 distinct shared targets** (the crossing-prone double fan-in, e.g. parallel workers each writing to both a `database` and a `report`), they are wrapped in a new container (`"grouped": true`) and each losslessly-shared target (un-labelled, or all sharing one identical label) has its N edges replaced by a single container→target edge. A single-sink fan-out (decision branches converging on one node) is left alone. A grouped member may itself be a container, producing a **nested container** — lay it out per the nested format below. The grouping is also enforced deterministically by the fixer (Step 4), so it survives even if this layout pass lays the members out flat.
 
 ### Step 3: Generate Layout Plan (three passes)
 
@@ -92,7 +92,7 @@ Write the grid assignment to `artifacts/grid-assignment.json`:
     {"col": 2, "nodes": ["check", "assess"]},
     {"col": 3, "nodes": ["analyze", "explore"]}
   ],
-  "free_floating": ["mlflow-server", "eval-setup", "callout-1"],
+  "free_floating": ["database", "config-service", "callout-1"],
   "topology": "diamond",
   "num_rows": 2,
   "wrap_at_col": null
@@ -150,20 +150,20 @@ The layout plan JSON format for both passes:
     {
       "id": "n1", "type": "node",
       "x": 50, "y": 200, "width": 130, "height": 120,
-      "label_html": "<b>/eval-mlflow</b><br><br>--run-id<br>--action<br>--config",
+      "label_html": "<b>/deploy</b><br><br>--target<br>--action<br>--config",
       "style": "rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;strokeWidth=2;verticalAlign=top;spacingTop=5;"
     },
     {
       "id": "c1", "type": "container",
       "x": 300, "y": 50, "width": 600, "height": 200,
-      "label_html": "<b>log-results</b>",
+      "label_html": "<b>Workers</b>",
       "style": "rounded=1;whiteSpace=wrap;html=1;fillColor=#ececec;strokeColor=#333333;strokeWidth=2;container=1;collapsible=0;",
       "children": [
-        {"id": "c1_1", "rel_x": 20, "rel_y": 40, "width": 100, "height": 80, "label_html": "Params<br>...", "style": "..."},
+        {"id": "c1_1", "rel_x": 20, "rel_y": 40, "width": 100, "height": 80, "label_html": "Worker A<br>...", "style": "..."},
         {
           "id": "inner", "type": "container",
           "rel_x": 140, "rel_y": 40, "width": 240, "height": 140,
-          "label_html": "<b>Sync Dataset</b>",
+          "label_html": "<b>Build Step</b>",
           "style": "rounded=1;whiteSpace=wrap;html=1;fillColor=#ececec;strokeColor=#333333;strokeWidth=2;container=1;collapsible=0;",
           "children": [
             {"id": "inner_1", "rel_x": 20, "rel_y": 40, "width": 90, "height": 70, "label_html": "step", "style": "..."}
@@ -180,7 +180,7 @@ The layout plan JSON format for both passes:
     },
     {
       "id": "e_back", "type": "edge",
-      "from": "mlflow", "to": "pull",
+      "from": "database", "to": "worker",
       "label": "",
       "style": "edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333;strokeWidth=1.5;dashed=1;dashPattern=8 4;html=1;",
       "waypoints": [{"x": 900, "y": 700}, {"x": 200, "y": 700}],
