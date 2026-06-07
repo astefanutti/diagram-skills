@@ -5,8 +5,12 @@ import json
 import sys
 
 
-def validate(plan):
-    """Check layout plan for common issues."""
+def validate(plan, spec=None):
+    """Check layout plan for common issues.
+
+    When `spec` (the graph spec the plan was built from) is supplied, also
+    verify no edge was dropped between authoring and layout.
+    """
     warnings = []
     errors = []
 
@@ -362,6 +366,63 @@ def validate(plan):
                 f"or vertical."
             )
 
+    # Edge style sanity: a full mxGraph style that sets a non-orthogonal
+    # edgeStyle renders as a diagonal line and the renderer can't recover it
+    # (unlike a bare type keyword, which render normalizes to orthogonal). Flag
+    # only that unrecoverable case.
+    for elem in elements:
+        if elem.get("type") != "edge":
+            continue
+        style = elem.get("style", "")
+        if "edgeStyle=" in style and "orthogonalEdgeStyle" not in style:
+            errors.append(
+                f"Edge style not orthogonal: {elem.get('from')}->{elem.get('to')} "
+                f"sets a non-orthogonal edgeStyle. Use "
+                f"edgeStyle=orthogonalEdgeStyle."
+            )
+
+    # Edge-preservation: every edge in the source spec must survive into the
+    # layout plan (directly, or folded into a grouping container). Catches a
+    # layout pass that drops edges wholesale (e.g. a diagram rendered with no
+    # arrows at all).
+    if spec and spec.get("edges"):
+        plan_pairs = {(e.get("from"), e.get("to"))
+                      for e in elements if e.get("type") == "edge"}
+        parent_of = {}
+
+        def _map_parents(cont):
+            for ch in cont.get("children", []):
+                cid = ch.get("id") if isinstance(ch, dict) else ch
+                parent_of[cid] = cont["id"]
+                if isinstance(ch, dict) and ch.get("children"):
+                    _map_parents(ch)
+        for elem in elements:
+            if elem.get("type") == "container":
+                _map_parents(elem)
+
+        all_ids = {e["id"] for e in elements
+                   if e.get("type", "node") in ("node", "container")}
+        all_ids |= set(parent_of)
+
+        def _covered(a, b):
+            # direct, or via either endpoint's container (bundled edge)
+            for x in (a, parent_of.get(a)):
+                for y in (b, parent_of.get(b)):
+                    if x and y and (x, y) in plan_pairs:
+                        return True
+            return False
+
+        missing = [(e["from"], e["to"]) for e in spec["edges"]
+                   if not e.get("is_back_edge")
+                   and e["from"] in all_ids and e["to"] in all_ids
+                   and not _covered(e["from"], e["to"])]
+        if missing:
+            errors.append(
+                f"Dropped edges: {len(missing)} edge(s) from the graph spec are "
+                f"missing in the layout plan, e.g. {missing[:5]}. The layout "
+                f"must include every authored edge."
+            )
+
     return {"errors": errors, "warnings": warnings}
 
 
@@ -468,7 +529,28 @@ def main():
     with open(sys.argv[1]) as f:
         plan = json.load(f)
 
-    result = validate(plan)
+    # Auto-discover the graph spec next to the plan (both live in artifacts/),
+    # or take an explicit --spec, to enable the edge-preservation check.
+    spec = None
+    spec_path = None
+    if "--spec" in sys.argv:
+        idx = sys.argv.index("--spec")
+        if idx + 1 < len(sys.argv):
+            spec_path = sys.argv[idx + 1]
+    else:
+        import os
+        guess = os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])),
+                             "graph-spec.json")
+        if os.path.exists(guess):
+            spec_path = guess
+    if spec_path:
+        try:
+            with open(spec_path) as f:
+                spec = json.load(f)
+        except (OSError, ValueError):
+            spec = None
+
+    result = validate(plan, spec)
 
     if result["errors"]:
         print(f"ERRORS ({len(result['errors'])}):", file=sys.stderr)
