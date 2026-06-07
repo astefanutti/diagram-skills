@@ -2160,10 +2160,18 @@ def fix_enforce_groups(plan, spec, pad=16, gap=20, title=36):
             if se.get("from") != gid:
                 continue
             tgt = se["to"]
+            # Drop only the member→tgt edges the spec actually folded into the
+            # bundle. A member the spec still lists with its own edge to tgt
+            # (e.g. a labelled pull-feedback→report that wasn't lossless) keeps
+            # that individual edge.
+            spec_kept = {e["from"] for e in spec.get("edges", [])
+                         if e.get("to") == tgt and e.get("from") != gid}
             plan["elements"] = [
                 el for el in plan["elements"]
                 if not (el.get("type") == "edge"
-                        and el.get("from") in member_set and el.get("to") == tgt)
+                        and el.get("from") in member_set
+                        and el.get("from") not in spec_kept
+                        and el.get("to") == tgt)
             ]
             exists = any(el.get("type") == "edge" and el.get("from") == gid
                          and el.get("to") == tgt for el in plan["elements"])
