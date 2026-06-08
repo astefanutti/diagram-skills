@@ -185,7 +185,9 @@ After initial placement, check the aspect ratio against the target for the topol
 
 **Strategy 3 — Spacing compression.** Reduce column spacing from 50px to 30px gaps, or merge tightly-coupled sequential steps into single nodes. This can recover 100-200px of width without changing the topology.
 
-**Strategy 4 — Row wrapping (fallback only).** If strategies 1-3 still leave the aspect ratio >50% above target, break the pipeline into rows. Each row flows left-to-right. Rows are stacked top-to-bottom with vertical transition edges. Wrap incrementally — identify the widest pipeline segment, wrap only that segment into a new row, then re-check. Don't wrap the entire diagram at once.
+**Strategy 4 — Row wrapping (fallback only).** If strategies 1-3 still leave the aspect ratio >50% above target, break the pipeline into rows. Wrap incrementally — identify the widest pipeline segment, wrap only that segment into a new row, then re-check. Don't wrap the entire diagram at once.
+
+Wrap **serpentine** (boustrophedon): alternate the flow direction each row — row 1 left-to-right, row 2 right-to-left, row 3 left-to-right, and so on. The last node of one row then sits directly above the first node of the next, so the row-transition edge is a **short vertical drop** between adjacent nodes. The common mistake is to flow every row left-to-right: that leaves each row ending at the far right while the next begins at the far left, forcing the transition edge to traverse the entire row — straight through every node in between (an unavoidable edge-through-node and a long diagonal). Serpentine wrapping eliminates that whole class of defect by construction. Concretely, the wrap edge's exit and entry anchors should be a bottom→top pair on two vertically-adjacent nodes; if the transition edge spans more than ~1.5 node-widths horizontally, the rows are wrapped in the wrong direction.
 
 **Strip layout detection**: after initial placement, check if all forward-flow nodes share roughly the same y-row (y values within 50px). This is a "strip layout" — a long horizontal band that's hard to read. A strip with 8+ nodes always needs correction. Apply strategies 1-3 first (stacking and containers usually suffice), then strategy 4 if still needed. The goal is that the layout uses at least 2-3 distinct y-levels for forward-flow nodes.
 
@@ -249,7 +251,7 @@ Edges must NEVER pass through the bounding box of any node they are not connecte
 
 **The common trap**: back-edges that return to a target via a vertical segment at the target's center x. If there are other nodes between the routing corridor and the target, the vertical segment passes straight through them.
 
-**Verification**: for every edge with waypoints, check that no waypoint segment intersects any non-connected node's bounding box. The `validate_layout.py` script checks this programmatically.
+**Verification**: for every edge, check that no segment intersects any non-connected node's bounding box. `validate_layout.py` checks this programmatically — **including waypoint-free edges**, by predicting the exact orthogonal route draw.io will auto-draw between the exit and entry anchors. A clean-looking `exit→entry` pair with no waypoints is NOT automatically safe: when the two anchors are on the same axis (e.g. bottom→top), draw.io draws a 3-segment Z whose crossbar and entry stem can cut straight through a node sitting between the two. If the validator flags a waypoint-free edge, either add waypoints that route around the obstacle or pick anchors whose path is clear (often a serpentine re-wrap, Rule 6a, removes the obstacle entirely).
 
 ### 8b. Orthogonal Connection and S-bend Elimination
 
@@ -301,6 +303,21 @@ This ensures the closer target's horizontal sweep stays inside the farther targe
 **Why this works**: if the inner (closer) exit goes to the closer target, its horizontal at a higher y never reaches the outer (farther) exit's x position. The outer edge descends past the inner edge's horizontal without crossing.
 
 Stagger `entryY` values (e.g., 0.6, 0.7) so entry points don't overlap forward-edge anchors.
+
+### 8d. Never Double Back at an Anchor (no hairpins)
+
+An edge must leave its exit side going **outward** and arrive at its entry side going **inward**. If the first move from the exit anchor heads back across that side — e.g. the anchor is on the **left** but the first waypoint (or the target) is to the **right** — draw.io draws a hairpin U-turn that almost always clips the source or target box. This is the most common "overlaps boxes" defect for an edge into a node directly above/below/beside its source.
+
+Fix by choosing the anchor that faces the actual route (Rule 8c): if the target sits below the source, exit from the **bottom** and enter the **top** — don't exit the left or right and then immediately curl back. The route into a node should approach perpendicular to the entered side from *outside* the box; a perpendicular L whose corner lands *inside* the target box (so the arrow seems to sprout from the box body) is the same defect — re-pick the entry side.
+
+### 8e. Loop/Retry Pairs — Separate the Two Arcs
+
+When two nodes are joined by both a forward edge and a back-edge (a retry loop, a feedback cycle — A→B **and** B→A), the two arcs must not crowd the same corner. Give the back-edge anchors on **different sides** than the forward edge uses at each shared node:
+
+- If the forward edge **enters** node A on its top, the back-edge should **leave** A from a different side (e.g. its left), not also from the top.
+- If the forward edge **leaves** node B from its right, the back-edge should **enter** B on a different side (e.g. its bottom), not also the right.
+
+Example: a forward `run → optimize` that enters optimize's top and leaves run's right pairs with a back `optimize → run` that exits optimize's **left** and enters run's **bottom** — the loop then reads as two distinct arcs instead of two lines squeezed through one gap. (`fix_layout.py` re-anchors such pairs automatically, but authoring them correctly avoids the churn.)
 
 ### 8d. Edge Crossing Prevention
 

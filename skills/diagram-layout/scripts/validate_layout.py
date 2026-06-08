@@ -5,6 +5,22 @@ import json
 import sys
 
 
+def _route_helpers():
+    """Import the fixer's route-prediction helpers (single source of truth).
+
+    The validator must predict a waypoint-free edge's route exactly as the
+    fixer does, or the two disagree and the layout loop thrashes. Import lazily
+    with a sys.path fallback so it works both as a module and run standalone.
+    """
+    try:
+        from fix_layout import _predicted_route_pts, _anchor_side
+    except ImportError:
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from fix_layout import _predicted_route_pts, _anchor_side
+    return _predicted_route_pts, _anchor_side
+
+
 def validate(plan, spec=None):
     """Check layout plan for common issues.
 
@@ -269,6 +285,59 @@ def validate(plan, spec=None):
                     f"of node {box['id']} (min clearance: "
                     f"{clearance_margin}px)"
                 )
+
+    # Check waypoint-free edges against the route draw.io will actually draw.
+    # Edges WITH waypoints are covered by the segment check above; edges WITHOUT
+    # are free-routed by draw.io's orthogonal router, so a clean-looking
+    # exit→entry pair can still hide an L/Z bend that plows through a box. We
+    # predict that exact route (same model the fixer uses, imported so the two
+    # never disagree) and flag it when it crosses a non-connected node. This is
+    # the blind spot that let edge-through-box defects render "validation clean".
+    _predicted_route_pts, _anchor_side = _route_helpers()
+    for elem in elements:
+        if elem.get("type") != "edge":
+            continue
+        if elem.get("waypoints"):
+            continue
+        ep = elem.get("exit_point")
+        np_ = elem.get("entry_point")
+        src = node_geom.get(elem["from"])
+        tgt = node_geom.get(elem["to"])
+        if not (src and tgt and ep and np_):
+            continue
+        exit_abs = {
+            "x": src["x"] + ep["x"] * src["width"],
+            "y": src["y"] + ep["y"] * src["height"],
+        }
+        entry_abs = {
+            "x": tgt["x"] + np_["x"] * tgt["width"],
+            "y": tgt["y"] + np_["y"] * tgt["height"],
+        }
+        route = _predicted_route_pts(
+            exit_abs, entry_abs, _anchor_side(ep), _anchor_side(np_))
+        skip_ids = {elem["from"], elem["to"]}
+        skip_ids |= set(_ancestors(elem["from"])) | set(_ancestors(elem["to"]))
+        hit = None
+        for k in range(len(route) - 1):
+            ax, ay = route[k]["x"], route[k]["y"]
+            bx, by = route[k + 1]["x"], route[k + 1]["y"]
+            for box in boxes:
+                if box["id"] in skip_ids:
+                    continue
+                if any(a in skip_ids for a in _ancestors(box["id"])):
+                    continue
+                if _segment_intersects_box(ax, ay, bx, by, box, margin=0):
+                    hit = box
+                    break
+            if hit:
+                break
+        if hit:
+            errors.append(
+                f"Edge through node: {elem['from']}->{elem['to']} (no waypoints) "
+                f"will be auto-routed by draw.io straight through node "
+                f"{hit['id']}. Add waypoints that route around it, or pick "
+                f"exit/entry anchors whose orthogonal path is clear."
+            )
 
     # Check edge label collision with nodes
     label_char_width = 7

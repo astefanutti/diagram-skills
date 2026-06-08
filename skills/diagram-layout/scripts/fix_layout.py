@@ -1583,18 +1583,126 @@ def _seg_hits_any_node(pts, boxes, connected, margin=0):
 
 
 def _predicted_route_pts(exit_abs, entry_abs, es, ns):
-    """The orthogonal point chain draw.io draws for a waypoint-free edge."""
+    """The orthogonal point chain draw.io draws for a waypoint-free edge.
+
+    draw.io leaves each anchor perpendicular to its side, so:
+    - perpendicular sides (e.g. right-exit + top-entry) → a single-corner L;
+    - same-axis sides (bottom-exit + top-entry, or left + right) → a 3-segment
+      Z: out along the axis to a midpoint, across, then in. Modelling the Z is
+      what makes the prediction match the rendered route for wrapped/back edges.
+    """
     ex, ey = exit_abs["x"], exit_abs["y"]
     nx, ny = entry_abs["x"], entry_abs["y"]
+    vertical = ("top", "bottom")
+    horizontal = ("left", "right")
     if abs(ex - nx) <= 1 or abs(ey - ny) <= 1:
-        corner = None
-    elif es in ("left", "right") and ns in ("top", "bottom"):
-        corner = {"x": nx, "y": ey}
-    elif es in ("top", "bottom") and ns in ("left", "right"):
-        corner = {"x": ex, "y": ny}
+        mids = []
+    elif es in vertical and ns in vertical:
+        my = (ey + ny) / 2.0
+        mids = [{"x": ex, "y": my}, {"x": nx, "y": my}]
+    elif es in horizontal and ns in horizontal:
+        mx = (ex + nx) / 2.0
+        mids = [{"x": mx, "y": ey}, {"x": mx, "y": ny}]
+    elif es in horizontal and ns in vertical:
+        mids = [{"x": nx, "y": ey}]
+    elif es in vertical and ns in horizontal:
+        mids = [{"x": ex, "y": ny}]
     else:
-        corner = {"x": nx, "y": ey}
-    return [exit_abs] + ([corner] if corner else []) + [entry_abs]
+        mids = [{"x": nx, "y": ey}]
+    return [exit_abs] + mids + [entry_abs]
+
+
+_SIDE_NORMAL = {"left": (-1, 0), "right": (1, 0),
+                "top": (0, -1), "bottom": (0, 1)}
+
+
+def _route_has_uturn(exit_abs, entry_abs, es, ns, wps, tol=1.0):
+    """True if the route doubles back on itself at the exit or entry anchor.
+
+    A clean edge leaves its exit side going *outward* and arrives at its entry
+    side going *inward*. When the first move instead heads back across the exit
+    side (e.g. the anchor is on the left but the target is to the right), draw.io
+    draws an ugly hairpin that usually clips the source/target box. This is a
+    pure-defect signal — legitimate routing never reverses at an anchor — so it
+    is safe to use as a trigger for re-anchoring.
+    """
+    first = wps[0] if wps else entry_abs
+    last = wps[-1] if wps else exit_abs
+    if es in _SIDE_NORMAL:
+        nx_, ny_ = _SIDE_NORMAL[es]
+        move = (first["x"] - exit_abs["x"], first["y"] - exit_abs["y"])
+        if nx_ * move[0] + ny_ * move[1] < -tol:
+            return True
+    if ns in _SIDE_NORMAL:
+        nx_, ny_ = _SIDE_NORMAL[ns]
+        arrive = (entry_abs["x"] - last["x"], entry_abs["y"] - last["y"])
+        if nx_ * arrive[0] + ny_ * arrive[1] > tol:
+            return True
+    return False
+
+
+def _best_anchor_route(src, tgt, boxes, connected,
+                       penalize_exit=(), penalize_entry=()):
+    """Find the cleanest exit/entry side-anchor pair for a waypoint-free edge.
+
+    When draw.io's free route for the current anchors plows through a node, the
+    cheapest robust fix is usually a *different pair of sides* — e.g. a target
+    sitting below the source wants bottom-exit→top-entry, not the left-exit the
+    LLM happened to write. Try all 16 side-center pairs, keep those whose
+    predicted orthogonal route clears every non-connected node, and pick the one
+    that (a) faces the way the boxes actually lie and (b) bends least. Returns
+    ``(exit_point, entry_point)`` or ``None`` if no clean pair exists (a genuine
+    structural conflict the caller must route around or the validator flags).
+    """
+    sides = {
+        "top": (0.5, 0.0), "bottom": (0.5, 1.0),
+        "left": (0.0, 0.5), "right": (1.0, 0.5),
+    }
+    scx, scy = src["x"] + src["width"] / 2, src["y"] + src["height"] / 2
+    tcx, tcy = tgt["x"] + tgt["width"] / 2, tgt["y"] + tgt["height"] / 2
+
+    def faces(side, fx, fy, gx, gy):
+        # 0 if `side` of the box at (fx,fy) points toward (gx,gy), else 1.
+        if side == "right":
+            return 0 if gx > fx else 1
+        if side == "left":
+            return 0 if gx < fx else 1
+        if side == "bottom":
+            return 0 if gy > fy else 1
+        return 0 if gy < fy else 1  # top
+
+    def inside(pt, b):
+        return (b["x"] + 0.5 < pt["x"] < b["x"] + b["width"] - 0.5
+                and b["y"] + 0.5 < pt["y"] < b["y"] + b["height"] - 0.5)
+
+    best = None
+    for es, (ex, ey) in sides.items():
+        for ns, (nx, ny) in sides.items():
+            exit_abs = {"x": src["x"] + ex * src["width"],
+                        "y": src["y"] + ey * src["height"]}
+            entry_abs = {"x": tgt["x"] + nx * tgt["width"],
+                         "y": tgt["y"] + ny * tgt["height"]}
+            route = _predicted_route_pts(exit_abs, entry_abs, es, ns)
+            if _seg_hits_any_node(route, boxes, connected):
+                continue
+            # Penalize (don't forbid) pairs whose route approaches an anchor
+            # from *inside* its own box — a perpendicular L whose corner lands
+            # within the target makes the arrow appear to emerge from the box
+            # body. Heavily penalized so a cleaner pair always wins, but still
+            # usable as a last resort over no clean pair at all.
+            ugly = inside(route[1], src) or inside(route[-2], tgt)
+            bends = len(route) - 2
+            score = (bends
+                     + faces(es, scx, scy, tcx, tcy)
+                     + faces(ns, tcx, tcy, scx, scy)
+                     + (5 if ugly else 0)
+                     + (3 if es in penalize_exit else 0)
+                     + (3 if ns in penalize_entry else 0))
+            if best is None or score < best[0]:
+                best = (score, {"x": ex, "y": ey}, {"x": nx, "y": ny})
+    if best is None:
+        return None
+    return best[1], best[2]
 
 
 def _corridor_route(src, tgt, boxes, connected):
@@ -1695,9 +1803,31 @@ def fix_edge_through_node(plan, clearance=20):
             all_pts = _predicted_route_pts(
                 exit_abs, entry_abs, _anchor_side(ep), _anchor_side(np_))
 
-        # If the (predicted) route is clear, leave the edge untouched —
-        # keeps clean waypoint-free edges editable.
-        if not _seg_hits_any_node(all_pts, boxes, connected_ids):
+        es, ns = _anchor_side(ep), _anchor_side(np_)
+        hits = _seg_hits_any_node(all_pts, boxes, connected_ids)
+        uturn = _route_has_uturn(exit_abs, entry_abs, es, ns, wps)
+
+        # A route that neither crosses a node nor doubles back is fine — leave
+        # it untouched so clean waypoint-free edges stay editable.
+        if not hits and not uturn:
+            continue
+
+        # First try swapping to a cleaner pair of side anchors. If some pair
+        # routes clear, keep it waypoint-free (most editable) instead of
+        # materializing a detour. This fixes both the "anchor points the wrong
+        # way" hairpin (target sits below but the edge exits left) and many
+        # through-node cases in one move, picking the side pair that faces the
+        # way the boxes lie and bends least.
+        alt = _best_anchor_route(src, tgt, boxes, connected_ids)
+        if alt:
+            elem["exit_point"], elem["entry_point"] = alt
+            elem["waypoints"] = []
+            fixes += 1
+            continue
+
+        # No clean side pair exists. A pure hairpin (no node actually crossed)
+        # is left as-is rather than risk a worse detour.
+        if not hits:
             continue
 
         # Prefer a clean corridor route through the gap between the endpoints
@@ -1782,6 +1912,87 @@ def fix_edge_through_node(plan, clearance=20):
         if rerouted:
             elem["waypoints"] = new_wps
             fixes += 1
+
+    return fixes
+
+
+def fix_cycle_anchors(plan):
+    """Separate the two edges of a 2-cycle so they don't crowd one corner.
+
+    When A→B and B→A both exist (a forward edge and its loop/retry back-edge),
+    the LLM often anchors the back-edge on the same node sides the forward edge
+    uses, so the two run parallel through one cramped band. Re-anchor the
+    back-edge (the one against the flow) onto a clean facing pair that avoids
+    the forward edge's sides — e.g. a retry loop whose forward arm enters the
+    top now leaves from the left and drops into the bottom instead of squeezing
+    back through the same gap. Only applied when there's an actual side conflict
+    and a clean re-anchored route exists.
+    """
+    elements = plan.get("elements", [])
+    node_geom = _node_geom_lookup(elements)
+    boxes, _, _ = _collect_boxes(elements)
+    anc = _ancestor_map(elements)
+    desc = _descendant_map(elements)
+    direction = plan.get("direction", "right")
+
+    edges = [e for e in elements
+             if e.get("type") == "edge"
+             and e.get("exit_point") and e.get("entry_point")]
+    emap = {(e["from"], e["to"]): e for e in edges}
+
+    fixes = 0
+    seen = set()
+    for e in edges:
+        a, b = e["from"], e["to"]
+        if (a, b) in seen or (b, a) in seen:
+            continue
+        rev = emap.get((b, a))
+        if rev is None:
+            continue
+        seen.add((a, b))
+        ga, gb = node_geom.get(a), node_geom.get(b)
+        if not (ga and gb):
+            continue
+
+        # Identify the back-edge (against the flow); skip a sideways cycle.
+        if _edge_is_backward(ga, gb, direction):
+            back, fwd = e, rev
+        elif _edge_is_backward(gb, ga, direction):
+            back, fwd = rev, e
+        else:
+            continue
+
+        fwd_entry_side = _anchor_side(fwd["entry_point"])  # at the shared node
+        fwd_exit_side = _anchor_side(fwd["exit_point"])
+        back_exit_side = _anchor_side(back["exit_point"])
+        back_entry_side = _anchor_side(back["entry_point"])
+
+        # back exits the forward edge's *target*; entering the same side the
+        # forward arrives on is the crowding we want to break.
+        conflict = (
+            (back_exit_side is not None and back_exit_side == fwd_entry_side)
+            or (back_entry_side is not None and back_entry_side == fwd_exit_side)
+        )
+        if not conflict:
+            continue
+
+        bsrc = node_geom.get(back["from"])
+        btgt = node_geom.get(back["to"])
+        conn = _edge_skip_ids(back["from"], back["to"], anc, desc)
+        alt = _best_anchor_route(
+            bsrc, btgt, boxes, conn,
+            penalize_exit={fwd_entry_side} if fwd_entry_side else set(),
+            penalize_entry={fwd_exit_side} if fwd_exit_side else set(),
+        )
+        if not alt:
+            continue
+        new_ep, new_np = alt
+        if (_anchor_side(new_ep) == back_exit_side
+                and _anchor_side(new_np) == back_entry_side):
+            continue  # no change
+        back["exit_point"], back["entry_point"] = new_ep, new_np
+        back["waypoints"] = []
+        fixes += 1
 
     return fixes
 
@@ -2012,34 +2223,18 @@ def fix_strip_waypoints(plan):
         if bends > 2:
             continue
 
-        # Only strip if draw.io can route this cleanly:
-        # 1) Already a straight line (aligned on one axis), or
-        # 2) An L-bend where both segments are clear of nodes
+        # Only strip if the route draw.io will draw *after stripping* stays
+        # clear. The router doesn't pick whichever L happens to be open — it
+        # draws one deterministic path from the pinned anchors (an L for
+        # perpendicular sides, a Z for same-axis sides). Predict that exact
+        # path (the same model the validator and rerouter use) and keep the
+        # waypoints if it would plow through a node. Checking "is some L clear"
+        # instead used to strip waypoints that were the only thing holding a
+        # same-axis edge off a box, silently recreating an edge-through-node.
         connected = _edge_skip_ids(elem["from"], elem["to"], anc, desc)
-        ex, ey = exit_abs["x"], exit_abs["y"]
-        nx, ny = entry_abs["x"], entry_abs["y"]
-
-        can_strip = False
-
-        if abs(ex - nx) <= 1 or abs(ey - ny) <= 1:
-            # Straight line — draw.io handles trivially
-            can_strip = True
-        else:
-            # Check both L-bend options
-            # Option A: horizontal then vertical (corner at entry_x, exit_y)
-            # Option B: vertical then horizontal (corner at exit_x, entry_y)
-            for cx, cy in [(nx, ey), (ex, ny)]:
-                clear = True
-                for box in boxes:
-                    if box["id"] in connected:
-                        continue
-                    if _segment_intersects_box(ex, ey, cx, cy, box, 0) or \
-                       _segment_intersects_box(cx, cy, nx, ny, box, 0):
-                        clear = False
-                        break
-                if clear:
-                    can_strip = True
-                    break
+        route = _predicted_route_pts(
+            exit_abs, entry_abs, _anchor_side(ep), _anchor_side(np_))
+        can_strip = not _seg_hits_any_node(route, boxes, connected)
 
         if can_strip:
             elem["waypoints"] = []
@@ -2216,6 +2411,9 @@ def _run_passes(plan, corner_anchors=True, simplify=True, gravity=True):
     summary["spikes_pass1"] = fix_spikes(plan)
     summary["node_alignment"] = fix_node_alignment(plan)
     summary["overlaps"] = fix_overlaps(plan)
+    # Separate 2-cycle (loop/retry) edge pairs before rerouting so the
+    # back-edge gets a distinct facing path instead of crowding the forward arm.
+    summary["cycle_anchors"] = fix_cycle_anchors(plan)
     summary["rerouted_edges"] = fix_edge_through_node(plan)
     # Re-run all edge fixes after rerouting
     summary["entry_exit_pass2"] = fix_entry_exit(plan)
