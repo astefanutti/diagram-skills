@@ -20,8 +20,8 @@ import pytest
 import fix_layout as F
 from validate_layout import validate
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__)))))
+# <repo>/tests/diagram-layout/test_corpus_regression.py -> <repo>
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CORPUS = sorted(glob.glob(os.path.join(ROOT, "eval", "runs", "**",
                                        "layout-plan.json"), recursive=True))
 

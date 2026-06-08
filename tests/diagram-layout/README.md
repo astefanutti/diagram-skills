@@ -1,21 +1,30 @@
-# diagram-layout routing tests
+# diagram-layout tests
 
-Non-regression tests for the diagram-layout scripts in `../scripts/`
-(`fix_layout.py`, `validate_layout.py`, `graph_analysis.py`, `render_drawio.py`).
-They encode the defects analysed and fixed across the session: edge-through-node,
-anchor hairpins, cramped loop/retry back-edges, the route-unaware waypoint
-stripper, fan-in grouping (and not over-grouping), deterministic group
-enforcement, nested-container rendering, reserved-ID remapping, edge-style
-normalization, and the validator's structural guards.
+Non-regression tests for the `diagram-layout` skill's scripts in
+`../../skills/diagram-layout/scripts/` (`fix_layout.py`, `validate_layout.py`,
+`graph_analysis.py`, `render_drawio.py`). They encode the defects analysed and
+fixed across the session: edge-through-node, anchor hairpins, cramped loop/retry
+back-edges, the route-unaware waypoint stripper, fan-in grouping (and not
+over-grouping), deterministic group enforcement, nested-container rendering,
+reserved-ID remapping, edge-style normalization, and the validator's structural
+guards.
+
+Tests live at the repo root under `tests/`, one subdirectory per skill, so the
+skill directories stay pure runtime units and `pytest` runs from the root.
 
 ## Run
 
 ```bash
-python3 -m pytest skills/diagram-layout/tests/
+# whole suite (all skills) from the repo root
+python3 -m pytest
+
+# just this skill
+python3 -m pytest tests/diagram-layout/
 ```
 
-No config or install needed — `conftest.py` puts `../scripts` on `sys.path`, and
-`pytest` is the only dependency.
+No install needed — `conftest.py` puts the skill's `scripts/` on `sys.path`, and
+`pytest` is the only dependency. The root `pytest.ini` limits collection to
+`tests/` and uses importlib mode.
 
 ## What's covered
 

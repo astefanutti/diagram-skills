@@ -1,16 +1,22 @@
 """Shared setup + tiny plan builders for the diagram-layout routing tests.
 
-The scripts under ``scripts/`` are run standalone (no package), so make them
-importable by putting that directory on ``sys.path``. Tests then ``import
-fix_layout`` / ``validate_layout`` directly.
+The skill's scripts are run standalone (no package), so make them importable by
+putting that directory on ``sys.path``. Tests then ``import fix_layout`` /
+``validate_layout`` directly.
 """
 import os
 import sys
 
-SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                       "scripts")
-if SCRIPTS not in sys.path:
-    sys.path.insert(0, SCRIPTS)
+# This file lives at <repo>/tests/diagram-layout/; the scripts under test live
+# at <repo>/skills/diagram-layout/scripts.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_REPO = os.path.dirname(os.path.dirname(_HERE))
+SCRIPTS = os.path.join(_REPO, "skills", "diagram-layout", "scripts")
+for _p in (SCRIPTS, _HERE):
+    # _HERE so tests can `from conftest import ...` under importlib mode (which,
+    # unlike prepend mode, doesn't add the test dir to sys.path itself).
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 
 # --- plan builders -------------------------------------------------------
