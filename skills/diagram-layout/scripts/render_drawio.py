@@ -71,10 +71,15 @@ def render(plan):
                          else _default_node_style())
         gx = elem["x"] if top_level else elem["rel_x"]
         gy = elem["y"] if top_level else elem["rel_y"]
+        # label_html is the box label key; fall back to `label` (the edge key)
+        # so a mis-keyed label still renders instead of an empty cell. An
+        # empty-STRING style is falsy but present, so `.get(k, default)` would
+        # pass it through verbatim and render a degenerate box — use `or` to
+        # fall back to the role-appropriate default in that case too.
         cells.append(_vertex(
-            cid, elem.get("label_html", ""),
+            cid, elem.get("label_html") or elem.get("label") or "",
             gx, gy, elem["width"], elem["height"],
-            elem.get("style", default_style),
+            elem.get("style") or default_style,
             parent=parent,
         ))
         cell_id = max(cell_id, int(cid) + 1) if cid.isdigit() else cell_id + 1

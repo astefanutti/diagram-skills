@@ -492,6 +492,92 @@ def validate(plan, spec=None):
                 f"must include every authored edge."
             )
 
+    # ------------------------------------------------------------------
+    # Style / label / role consistency.
+    #
+    # Every check above is geometric — none looks at a box's style or
+    # label, so a plan can be geometrically perfect yet render wrong:
+    #   * an empty/absent `style` collapses the box to draw.io's plain
+    #     default, silently dropping its role's look;
+    #   * a box carrying `label` (the EDGE key) instead of `label_html`
+    #     renders as an empty cell (value="");
+    #   * a node whose style omits its role's visual marker
+    #     (decision->rhombus, external->dashed, llm->double border) breaks
+    #     the diagram's visual language and makes sibling diagrams
+    #     inconsistent.
+    # These defects rendered "validation clean" for a long time and only
+    # surfaced via manual grep — so make them loud. Gated on `spec`: the
+    # per-node `role` lives in the graph spec, not the plan, and the
+    # pipeline always writes graph-spec.json next to the plan (main()
+    # auto-discovers it). The no-spec unit fixtures use bare boxes by
+    # design, so this never fires on them.
+    if spec:
+        id_role = {n["id"]: n.get("role")
+                   for n in spec.get("nodes", [])
+                   if isinstance(n, dict) and n.get("id") is not None}
+
+        # role -> (required style marker, severity, human description)
+        role_markers = {
+            "decision": ("rhombus", "error", "a diamond shape (rhombus)"),
+            "external": ("dashed", "warning", "a dashed border (dashed=1)"),
+            "llm": ("double=1", "warning", "a double border (double=1)"),
+        }
+
+        def _check_box_style(elem):
+            bid = elem.get("id", "<no-id>")
+            style = elem.get("style") or ""
+            is_container = (elem.get("type") == "container"
+                            or bool(elem.get("children")))
+
+            if not style:
+                errors.append(
+                    f"Empty style: box {bid} has no style — it renders as a "
+                    f"plain default box, dropping its role's look. Set the "
+                    f"canonical style for its role."
+                )
+
+            if not elem.get("label_html"):
+                if elem.get("label"):
+                    errors.append(
+                        f"Wrong label key: box {bid} sets 'label' (the edge "
+                        f"key) instead of 'label_html' — boxes render their "
+                        f"text from label_html, so this renders as an empty "
+                        f"cell (value=\"\"). Rename label -> label_html."
+                    )
+                else:
+                    errors.append(
+                        f"Missing label: box {bid} has no label_html — it "
+                        f"renders as an empty cell (value=\"\")."
+                    )
+
+            if is_container and style and "container=1" not in style:
+                warnings.append(
+                    f"Container {bid} style lacks 'container=1' — draw.io won't "
+                    f"treat its children as contained."
+                )
+
+            role = id_role.get(bid)
+            if style and role in role_markers:
+                marker, severity, human = role_markers[role]
+                if marker not in style:
+                    msg = (
+                        f"Role/style mismatch: {bid} has role '{role}' but its "
+                        f"style is missing {human} ('{marker}') — the diagram's "
+                        f"roles will be visually inconsistent."
+                    )
+                    (errors if severity == "error" else warnings).append(msg)
+
+        def _walk_style(elem, is_box):
+            if not isinstance(elem, dict):
+                return
+            if is_box:
+                _check_box_style(elem)
+            for child in elem.get("children", []) or []:
+                _walk_style(child, True)
+
+        for elem in elements:
+            _walk_style(elem, elem.get("type", "node") in ("node", "container"))
+
     return {"errors": errors, "warnings": warnings}
 
 

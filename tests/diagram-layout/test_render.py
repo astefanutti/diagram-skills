@@ -86,6 +86,45 @@ def test_non_orthogonal_real_style_is_not_rewritten():
     assert R._normalize_edge_style(bad) == bad
 
 
+# --- Box robustness: empty-style and label-key fallbacks ------------------
+
+def test_empty_box_style_falls_back_to_default():
+    # An empty-STRING style is falsy-but-present, so a plain `.get(k, default)`
+    # would emit style="" and draw.io would render a degenerate box. It must
+    # fall back to the default node style instead.
+    plan = {"elements": [{
+        "type": "node", "id": "a", "x": 0, "y": 0,
+        "width": 100, "height": 80, "label_html": "<b>A</b>", "style": "",
+    }]}
+    xml = R.render(plan)
+    assert 'style=""' not in xml
+    assert "fillColor=#f5f5f5" in xml      # the default node fill
+
+
+def test_box_renders_label_when_only_label_key_is_set():
+    # A box that mistakenly uses `label` (the edge key) instead of `label_html`
+    # should still render its text rather than an empty cell. (The validator
+    # separately flags this so the source gets fixed.)
+    plan = {"elements": [{
+        "type": "node", "id": "a", "x": 0, "y": 0, "width": 100, "height": 80,
+        "label": "Hello", "style": R._default_node_style(),
+    }]}
+    xml = R.render(plan)
+    assert 'value="Hello"' in xml
+    assert 'value=""' not in xml
+
+
+def test_label_html_takes_precedence_over_label():
+    plan = {"elements": [{
+        "type": "node", "id": "a", "x": 0, "y": 0, "width": 100, "height": 80,
+        "label_html": "<b>Real</b>", "label": "fallback",
+        "style": R._default_node_style(),
+    }]}
+    xml = R.render(plan)
+    assert "Real" in xml
+    assert "fallback" not in xml
+
+
 # --- Default fonts: Inter, not JetBrains Mono -----------------------------
 
 def test_default_styles_use_inter_font():
