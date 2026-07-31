@@ -2,6 +2,27 @@
 
 How to extract a flow diagram from a Claude Code skill directory.
 
+## Detail Floor (non-negotiables)
+
+A `--detail high` single-skill diagram is under-detailed — and reads as a
+generic outline rather than a useful reference — unless it clears ALL of these.
+Treat them as the acceptance bar, not aspirations:
+
+- **≥1 callout detail box** grounding the skill in concrete structure — above all
+  the **primary output artifact's** schema/fields, plus any central file tree or
+  config snippet (§6b). Read the actual script that writes it; do not approximate.
+- **Data-flow edge labels**: name the artifact that flows between steps
+  (`summary.yaml`, `collection.json`) on ≥1 edge (§8), not just conditions.
+- **Composite subsystems as containers** (§6), nested where a member is itself
+  multi-step — never collapse a multi-variant step into one flat node.
+- **Decision branches and back-edges preserved** — mode branches (§6a), retry
+  loops, and cache/fast-path short-circuits are structure, not noise.
+- **~10-16 boxes** for a rich skill (see "Deciding Granularity"), with 2-5
+  concrete bullets per node (real script/flag/file names, not generic verbs).
+
+`scripts/validate_d2.py` emits advisory `detail_warnings` for the first three.
+The rest of this guide explains how to satisfy each.
+
 ## Reading Order
 
 1. **SKILL.md** — the primary source. Read it fully. The workflow section defines the step sequence.

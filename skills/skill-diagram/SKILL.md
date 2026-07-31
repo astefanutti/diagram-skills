@@ -27,9 +27,9 @@ When multiple `--skill` flags are provided, the diagram mode is selected automat
 
 ### Step 1: Read the Skill(s)
 
-For each `--skill` path, read SKILL.md first — it's almost always sufficient for the flow structure. Only read `scripts/` if the SKILL.md references specific scripts by name (e.g., "run validate_eval.py") or if the workflow is too sparse to determine the flow from SKILL.md alone. Prompt and reference files rarely add nodes.
+For each `--skill` path, read SKILL.md first — it defines the **flow structure** (steps, order, branches). Then read the `scripts/` and `references/` that produce the skill's **primary output artifact(s)** and any concrete data structures it centers on (config schema, workspace file tree, result YAML). SKILL.md gives you the flow; the scripts give you the **callout content** — you cannot author accurate callout detail boxes (see `analysis-guide.md` §6b) from SKILL.md alone. Read a script when SKILL.md names it, when it writes the skill's main output, or when the flow is too sparse to determine from SKILL.md. Prompt files still map mainly to LLM nodes, not extra structure.
 
-Build a mental model of: what does this skill do, in what order, with what branches?
+Build a mental model of: what does this skill do, in what order, with what branches, and **what concrete artifacts does it read and produce?**
 
 For multi-skill diagrams, additionally scan each SKILL.md for:
 - **Skill tool invocations**: references to other skills being invoked (these become cross-skill edges)
@@ -52,15 +52,18 @@ Identify:
 - **Decision branches**: if/else conditions, strategy selection, conditional paths
 - **LLM/agent steps**: anything using Agent tool, sub-agents, prompt files, or direct LLM calls
 - **External dependencies**: other skills invoked (Skill tool), services (databases, APIs), external CLIs
-- **Containers**: groups of related sub-steps that execute as a unit
+- **Containers**: groups of related sub-steps that execute as a unit. Keep a composite subsystem's internal structure — do NOT collapse a multi-variant step (e.g. a scoring system with several judge types) into one flat node (see `analysis-guide.md` §6)
 - **Output artifacts**: files produced, reports generated, things opened
-- **Back-edges**: validation→retry loops, feedback cycles, fallback paths
+- **Callout detail boxes**: concrete examples that ground the abstract steps — above all the **primary output artifact's structure** (its schema/fields), plus workspace file trees and central config/YAML snippets. Author at least one for any non-trivial skill; read the actual script to get the real structure (see `analysis-guide.md` §6b)
+- **Data-flow**: the named artifact that flows between steps (e.g. `summary.yaml`, `collection.json`) — these become edge labels (see §8)
+- **Back-edges**: validation→retry loops, feedback cycles, fallback paths, cache/fast-path short-circuits
 
 For each node, capture:
 - A short title (2-4 words)
-- 2-5 bullet points describing what happens (for `--detail high`)
+- 2-5 bullet points describing what happens (for `--detail high`) — name the concrete scripts, flags, and files, not generic verbs
 - The node type: `entry`, `processing`, `llm`, `external`, `output`
-- Connections to other nodes, with edge labels for conditions
+- Connections to other nodes, with edge labels for **conditions** ("errors", "< 5 cases") **and data-flow artifacts** ("summary.yaml")
+- Any callout box anchored to it (primary-output schema, file tree, config snippet)
 
 #### Multi-skill (detailed mode, ≤5 skills)
 
@@ -89,10 +92,18 @@ Read `${CLAUDE_SKILL_DIR}/prompts/d2-conventions.md` for the style guide.
 Generate a D2 file following these conventions:
 1. Set `direction` per the `--direction` argument
 2. Set global styles (border-radius, font-size, fill, stroke)
-3. Declare nodes in flow order with markdown labels
-4. Declare edges with conditions as labels
-5. Use containers for grouped sub-steps (or for each skill in detailed multi-skill mode)
+3. Declare nodes in flow order with markdown labels (2-5 concrete bullets each at `--detail high`)
+4. Declare edges with conditions **and data-flow artifact names** as labels
+5. Use containers for grouped sub-steps (or for each skill in detailed multi-skill mode); nest a container child that is itself multi-step rather than flattening it
 6. Use proper styles for each node type (LLM = double-border, external = dashed, etc.)
+7. Add **callout detail boxes** (monospace, light border, dashed connector) for the primary output artifact's structure and any central file tree / config snippet
+
+**Detail floor** (a `--detail high` single-skill diagram should clear all of these; the diagram is under-detailed if it misses them):
+- ≥1 callout box (primary-output schema, file tree, or config snippet), with content read from the actual script — not an approximation
+- ≥1 data-flow edge label naming an artifact (`*.yaml`/`*.json`/`*.html`/…) when the diagram has ≥8 edges
+- composite subsystems rendered as containers (nested where a member is multi-step), not flattened
+- decision branches and back-edges (retry loops, cache fast-paths, mode branches) preserved
+- ~10-16 boxes for a rich skill (see `analysis-guide.md` "Deciding Granularity"); prefer a container over dropping detail
 
 For multi-skill detailed mode: prefix node IDs with the skill name to avoid collisions (e.g., `review.step1`, `optimize.step1`). Use the skill name as the container label.
 
@@ -106,7 +117,10 @@ If `--validate` was specified (or always, as a good practice), check the D2 synt
 python3 ${CLAUDE_SKILL_DIR}/scripts/validate_d2.py <output.d2>
 ```
 
-If errors are found, fix them before proceeding.
+If errors are found, fix them before proceeding. Also review `detail_warnings` in the
+output — they flag a missing callout box, absent data-flow labels, or too few nodes
+(the Detail floor above). Address them or have a deliberate reason not to; an
+under-detailed diagram is a quality failure even when it compiles.
 
 ### Step 4: Output
 
