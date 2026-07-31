@@ -58,6 +58,8 @@ Look for:
 
 Map each branch to an edge with a label describing the condition. Short labels work best: `"< 5 cases"`, `"errors"`, `"--update"`, `"missing"`.
 
+A decision (`shape: diamond`) must fan out to **≥2 outgoing edges**, each labeled with the **condition** that selects it — not the artifact that flows through it. If a candidate decision has only one exit, it is really a processing step: drop `shape: diamond`. A conditional *bypass* (e.g. `--headless` skips the interactive step) originates from the node where that condition is evaluated (arg parsing), not as a third exit off an unrelated decision. `validate_d2.py` flags one-exit and unlabeled-branch decisions.
+
 ### 4. LLM / Agent Steps
 
 Identify nodes that use LLM capabilities:
@@ -122,7 +124,7 @@ Generate callout boxes for concrete examples that ground abstract steps in tangi
 - **Config snippets** documented in SKILL.md or references (e.g., config.yaml structure)
 - **YAML/JSON structures** that are central to the skill's data model
 
-Callout boxes connect to their anchor node with a dashed line and sit in whitespace near it. They use monospace font, left-aligned text, and a light border. They make the diagram more useful as a reference doc — without them, the diagram stays abstract.
+Callout boxes connect to their anchor node with a dashed line and sit in whitespace near it. Anchor an output-artifact callout to the node that **produces** that artifact (the step that writes the file), not to a later consumer — a `{ID}-review.md` schema belongs on the review step that writes it, not on a downstream submit step. They use monospace font, left-aligned text, and a light border. They make the diagram more useful as a reference doc — without them, the diagram stays abstract.
 
 **Quality bar for callouts**: read the actual script that creates the structure (e.g., `workspace.py`) to extract the real directory tree, not an approximation. Include inline annotations explaining each file's purpose (e.g., `settings.json  ← perms + hooks`, `hooks.py  ← PreToolUse`, `batch.yaml  ← batch mode`). Show nesting accurately. A skeletal callout with wrong paths is worse than no callout.
 

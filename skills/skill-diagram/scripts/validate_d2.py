@@ -31,12 +31,85 @@ def validate(path):
         return {"valid": False, "errors": ["d2 compile timed out"]}
 
 
+# Attribute keys whose first dotted segment is a D2 keyword, not a node id.
+_ATTR_FIRST = {"shape", "style", "label", "width", "height", "direction", "near",
+               "icon", "link", "tooltip", "classes", "constraint",
+               "source-arrowhead", "target-arrowhead",
+               "grid-rows", "grid-columns", "vertical-gap", "horizontal-gap"}
+
+_EDGE = re.compile(r'^\s*([A-Za-z_][\w.-]*)\s*->\s*([A-Za-z_][\w.-]*)\s*(:\s*(.+?))?\s*\{?\s*$')
+
+
+def _decision_ids(text):
+    """Ids of nodes styled `shape: diamond` (decisions), mapped from the diamond
+    line back to the enclosing node declaration (handles `id: Label {` and the
+    `id: |md ... | { shape: diamond }` markdown-label form)."""
+    lines = text.split("\n")
+    ids = set()
+    for i, line in enumerate(lines):
+        if not re.search(r'shape\s*:\s*diamond', line):
+            continue
+        oid, j = None, i - 1
+        while j >= 0:
+            lj = lines[j].rstrip()
+            if lj.endswith("{"):
+                m = re.match(r'^\s*([A-Za-z_][\w.-]*)\s*:.*\{$', lj)
+                if m and '|' not in lj:                      # `id: Label {`
+                    oid = m.group(1)
+                else:                                        # `| {` — find `id: |md` above
+                    k = j - 1
+                    while k >= 0:
+                        mk = re.match(r'^\s*([A-Za-z_][\w.-]*)\s*:\s*\|+', lines[k])
+                        if mk:
+                            oid = mk.group(1)
+                            break
+                        k -= 1
+                break
+            j -= 1
+        if oid and oid.split('.')[0] not in _ATTR_FIRST:
+            ids.add(oid)
+    return ids
+
+
+def _decision_issues(text):
+    """A decision node must fan out to >=2 branches, each labeled with its
+    condition (analysis-guide.md 3). A diamond with one exit is really a
+    processing step; unlabeled branches leave the reader guessing."""
+    decisions = _decision_ids(text)
+    if not decisions:
+        return []
+    out = {}
+    for line in text.split("\n"):
+        m = _EDGE.match(line)
+        if not m:
+            continue
+        label = m.group(4)
+        has_label = bool(label and label.strip().strip('"').strip())
+        out.setdefault(m.group(1), []).append(has_label)
+    warns = []
+    for d in sorted(decisions):
+        edges = out.get(d, [])
+        n = len(edges)
+        if n < 2:
+            warns.append(f"decision '{d}' has only {n} outgoing edge(s) — a decision "
+                         "needs >=2 branches, or should not be shape:diamond "
+                         "(analysis-guide.md 3)")
+        else:
+            unlabeled = sum(1 for h in edges if not h)
+            if unlabeled:
+                warns.append(f"decision '{d}' has {unlabeled}/{n} outgoing edges with no "
+                             "condition label — name the branch condition "
+                             "(analysis-guide.md 3)")
+    return warns
+
+
 def lint_detail(path):
     """Advisory detail checks — warnings only, never fail the build.
 
     Flags the common ways an auto-generated diagram comes out under-detailed:
-    no callout boxes, no data-flow edge labels, or too few nodes. See
-    prompts/analysis-guide.md (6b callouts, 8 data-flow, Deciding Granularity).
+    no callout boxes, no data-flow edge labels, too few nodes, or decision
+    nodes that don't fan out to labeled branches. See prompts/analysis-guide.md
+    (6b callouts, 8 data-flow, 3 decision branches, Deciding Granularity).
     """
     try:
         text = open(path, encoding="utf-8").read()
@@ -60,6 +133,7 @@ def lint_detail(path):
     if 0 < nodes < 8:
         warns.append(f"only ~{nodes} step boxes — rich skills usually warrant 10-16; split "
                      "merged steps or use containers (analysis-guide.md 'Deciding Granularity')")
+    warns.extend(_decision_issues(text))
     return warns
 
 
